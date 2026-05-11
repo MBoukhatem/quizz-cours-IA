@@ -1,0 +1,123 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ---------- Virtual envs ----------
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# ---------- Tests / coverage ----------
+.pytest_cache/
+.tox/
+.nox/
+.cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+nosetests.xml
+*.cover
+*.py,cover
+
+# ---------- Type checkers / linters ----------
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# ---------- Streamlit ----------
+.streamlit/secrets.toml
+
+# ---------- Jupyter / IPython ----------
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# ---------- Env files (keep .env.example) ----------
+.env
+.env.*
+!.env.example
+
+# ---------- Project data (runtime, not source) ----------
+data/uploads/*
+!data/uploads/.gitkeep
+data/chroma/*
+!data/chroma/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+data/db/*
+!data/db/.gitkeep
+
+# ---------- Logs ----------
+*.log
+logs/
+*.log.*
+
+# ---------- Docker ----------
+docker-compose.override.yml
+.docker/
+
+# ---------- Node (au cas où, frontends futurs) ----------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---------- IDE / éditeurs ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+*~
+.project
+.pydevproject
+.settings/
+
+# ---------- OS ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------- Divers ----------
+*.pid
+*.seed
+*.pid.lock
+*.local

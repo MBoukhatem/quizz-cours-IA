@@ -1,0 +1,73 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: tuteur-quiz-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:0.5.23
+    container_name: tuteur-quiz-chromadb
+    ports:
+      - "8100:8000"
+    volumes:
+      - ./data/chroma:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=FALSE
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "wget -q --spider http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: tuteur-quiz-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - ./backend:/app
+    env_file:
+      - .env
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    depends_on:
+      ollama:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: tuteur-quiz-frontend
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./frontend:/app
+    env_file:
+      - .env
+    environment:
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
