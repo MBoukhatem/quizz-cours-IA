@@ -1,73 +1,87 @@
+name: quizz-cours-ia
+
 services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: tuteur-quiz-ollama
-    ports:
-      - "11434:11434"
+  qdrant:
+    image: qdrant/qdrant:latest
     volumes:
-      - ollama_data:/root/.ollama
+      - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: ['CMD-SHELL', 'bash -c ":> /dev/tcp/127.0.0.1/6333" || exit 1']
       interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     restart: unless-stopped
 
-  chromadb:
-    image: chromadb/chroma:0.5.23
-    container_name: tuteur-quiz-chromadb
-    ports:
-      - "8100:8000"
-    volumes:
-      - ./data/chroma:/chroma/chroma
-    environment:
-      - ANONYMIZED_TELEMETRY=FALSE
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
-    healthcheck:
-      test: ["CMD", "/bin/sh", "-c", "wget -q --spider http://localhost:8000/api/v1/heartbeat || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-    restart: unless-stopped
-
-  backend:
-    build: ./backend
-    container_name: tuteur-quiz-backend
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data:/data
-      - ./backend:/app
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
     env_file:
       - .env
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8000
+      QDRANT_URL: http://qdrant:6333
+      VLLM_BASE_URL: http://vllm:8000/v1
+      EMBEDDINGS_BASE_URL: http://infinity:7997
+      SQLITE_PATH: /app/data/memory.db
+    networks:
+      - default
+      - vllm_net
+      - embeddings_net
+    volumes:
+      - ./data:/app/data
     depends_on:
-      ollama:
-        condition: service_healthy
-      chromadb:
-        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
-  frontend:
-    build: ./frontend
-    container_name: tuteur-quiz-frontend
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
     ports:
-      - "8501:8501"
-    volumes:
-      - ./frontend:/app
+      - '4190:80'
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  cli:
+    build:
+      context: .
+      dockerfile: packages/cli/Dockerfile
     env_file:
       - .env
     environment:
-      - BACKEND_URL=http://backend:8000
+      QDRANT_URL: http://qdrant:6333
+      VLLM_BASE_URL: http://vllm:8000/v1
+      EMBEDDINGS_BASE_URL: http://infinity:7997
+    networks:
+      - default
+      - vllm_net
+      - embeddings_net
+    volumes:
+      - ./data:/app/data
     depends_on:
-      - backend
-    restart: unless-stopped
+      - qdrant
+    stdin_open: true
+    tty: true
+    profiles:
+      - cli
 
 volumes:
-  ollama_data:
+  qdrant_data:
+
+networks:
+  default:
+  vllm_net:
+    name: rag-local_default
+    external: true
+  embeddings_net:
+    name: embeddings_default
+    external: true

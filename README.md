@@ -1,161 +1,163 @@
-# Tuteur Quiz Adaptatif
+# Quizz-Cours-IA
 
-Agent IA local qui aide un étudiant à réviser son cours en générant des **QCM** à partir de ses propres supports (PDF, Markdown, TXT) via un pipeline **RAG**. Tout tourne en **local** avec **Ollama** : aucune API cloud payante, **100 % gratuit**.
+Générateur de quiz pédagogiques multi-agents avec RAG, sur LLM local.
 
-> Spécification complète : [`Resume_Project.md`](./Resume_Project.md)
+---
+
+## Pourquoi
+
+Les étudiants et formateurs qui veulent s'autoévaluer sur un cours ont besoin de questions fidèles au
+contenu réel, pas à des connaissances génériques. Générer ces questions manuellement est long ; un LLM
+seul hallucine ou sort du contexte. Un système multi-agents permet de séparer les responsabilités :
+le Router décide de la source à consulter (cours interne ou web), l'Agent RAG ancre les réponses dans
+les documents indexés, l'Agent Outils génère du JSON structuré et évalue les réponses. Les données
+restent privées (vLLM local, Qdrant local) et le pipeline complet répond au cahier des charges du
+projet final : orchestration LangGraph, streaming SSE, mémoire persistante, interfaces multiples.
+
+---
+
+## Architecture en bref
+
+Le message de l'utilisateur entre dans un **StateGraph LangGraph.js**. Un noeud **Router** (classifieur
+LLM) choisit l'une des deux branches : **Agent RAG** (recherche vectorielle Qdrant avec embeddings
+bge-m3, top-k=5 + MMR) ou **Agent Outils** (boucle ReAct : DuckDuckGo + `quiz_generator`). Les deux
+branches convergent vers un noeud **Aggregator** qui assemble citations, quiz et texte final, puis
+émet le tout en **Server-Sent Events**. La mémoire de conversation est persistée dans SQLite via le
+checkpointer LangGraph, par `thread_id`.
+
+Voir le diagramme complet : [`docs/architecture.mmd`](docs/architecture.mmd)
+
+---
 
 ## Stack
 
-| Composant | Technologie | Rôle |
-|-----------|------------|------|
-| LLM local | Ollama + Mistral 7B | Génération QCM et explications |
-| Backend | FastAPI 0.115 (Python 3.11) | API REST, orchestration RAG |
-| Frontend | Streamlit 1.40 | Upload, quiz, dashboard |
-| Vector DB | ChromaDB 0.5 | Indexation des chunks de cours |
-| Embeddings | sentence-transformers `all-MiniLM-L6-v2` | Vecteurs locaux (384-dim) |
-| Extraction PDF | PyMuPDF | Texte page-à-page |
-| Sessions | SQLite (volume Docker) | Scores, historique, traçabilité |
+| Composant | Choix |
+|---|---|
+| Runtime | Node.js 22 + pnpm workspaces |
+| Orchestration agents | LangGraph.js (StateGraph) |
+| LLM | vLLM — Qwen3.5-35B-A3B-GPTQ-Int4 (port 11435) |
+| Embeddings | Infinity — BAAI/bge-m3, 1024 dims (port 11436) |
+| Vector store | Qdrant (port 6333), collection `quiz_cours` |
+| HTTP framework | Fastify v5 + Zod type-provider |
+| Mémoire / sessions | better-sqlite3 via `@langchain/langgraph-checkpoint-sqlite` |
+| Interface web | React 19 + Vite + Tailwind v3 |
+| Interface CLI | commander + ink |
+| Recherche web | duck-duck-scrape (DDG, sans clé API) |
+| Observabilité | pino (logs), LangSmith optionnel |
+
+---
 
 ## Prérequis
 
-- Docker ≥ 24 et Docker Compose ≥ 2.20
-- 8 Go de RAM (modèle `mistral:7b`) — sinon basculer sur `phi3:mini`
-- ~5 Go d'espace disque (image du modèle)
-- `make` (facultatif, raccourcis)
+- Node.js >= 22
+- pnpm >= 9
+- Docker (pour l'image API conteneurisée)
+- GPU avec vLLM déjà démarré sur `localhost:11435` (modèle Qwen3.5-35B-A3B)
+- Infinity déjà démarré sur `localhost:11436` (modèle bge-m3)
+- Qdrant déjà démarré sur `localhost:6333`
+
+---
 
 ## Démarrage rapide
 
 ```bash
-# 1. Cloner / récupérer le projet, puis copier le .env si besoin
-cp .env.example .env
-
-# 2. Lancer la stack
-make run         # équivalent à: docker compose up -d --build
-
-# 3. Télécharger le modèle Ollama (à faire une fois Ollama healthy)
-make pull-model  # équivalent à: bash scripts/init_ollama.sh
-
-# 4. (Optionnel) indexer le corpus d'exemple
-bash scripts/seed_corpus.sh
+cp .env.example .env        # remplir VLLM_API_KEY
+pnpm install
+pnpm bootstrap              # crée la collection Qdrant (quiz_cours, 1024d, cosine)
+pnpm --filter @quizz/api dev
+pnpm --filter @quizz/web dev
+pnpm cli health
+pnpm cli ingest ./mon_cours.pdf
+pnpm cli chat
 ```
 
-Puis ouvrir :
-
-- **Frontend Streamlit** : <http://localhost:8501>
-- **API + Swagger UI** : <http://localhost:8000/docs>
-- **Health check** : <http://localhost:8000/api/health>
-
-Pour arrêter :
-
-```bash
-make stop     # arrêt simple
-make down     # arrêt + suppression des conteneurs (volumes conservés)
-make reset    # remise à zéro complète (efface data/)
-```
-
-## Utilisation
-
-1. **Upload** d'un cours via la page Streamlit `📤 Upload` (ou `POST /api/upload`). Le document est extrait, nettoyé, découpé en chunks (~500 tokens, overlap 50), puis indexé dans ChromaDB.
-2. **Quiz** via la page `🎯 Quiz` (ou `POST /api/quiz/generate`). Le planificateur choisit une difficulté (facile / moyen / difficile) selon votre score récent. Le RAG sélectionne un chunk non encore utilisé, le LLM génère un QCM strictement basé sur ce chunk.
-3. **Réponse** : `POST /api/quiz/answer` corrige, génère une explication citant le passage source et adapte la difficulté.
-4. **Dashboard** : la page `📊 Dashboard` montre le taux de réussite global, la progression par session, la performance par document.
-
-## Endpoints API
-
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| GET     | `/api/health` | Statut des composants (Ollama, ChromaDB) |
-| POST    | `/api/upload` | Indexer un fichier (form-data `file`) |
-| GET     | `/api/documents` | Liste des documents indexés |
-| DELETE  | `/api/documents/{id}` | Supprimer un document |
-| POST    | `/api/quiz/generate` | Générer une question QCM |
-| POST    | `/api/quiz/answer` | Corriger une réponse |
-| GET     | `/api/quiz/session/{id}` | État d'une session |
-| GET     | `/api/stats/summary` | Statistiques globales |
-| GET     | `/api/stats/history` | Historique des sessions |
-| GET     | `/api/stats/topics` | Performance par document |
-
-Détails : [`docs/api_reference.md`](./docs/api_reference.md).
-
-## Architecture
-
-```
-┌──────────────┐    ┌──────────────┐   ┌─────────────┐
-│  Streamlit   │    │   FastAPI    │   │   Ollama    │
-│  port 8501   │◄──►│  port 8000   │──►│ port 11434  │
-└──────────────┘    └──────┬───────┘   └─────────────┘
-                           │
-                    ┌──────▼───────┐
-                    │  ChromaDB    │
-                    │  port 8100   │
-                    └──────────────┘
-
-Volumes : ./data/{uploads,chroma,logs,db}
-```
-
-## Tests
-
-Lancer les tests pytest **dans le conteneur** :
-
-```bash
-make test
-# ou
-docker compose exec backend pytest -v
-```
-
-Les tests utilisent des stubs pour Ollama et ChromaDB — ils ne dépendent pas du modèle pulled. Cibles couvertes :
-
-- `test_document_processor.py` — extraction, nettoyage, chunking
-- `test_planner.py` — adaptation de difficulté
-- `test_quiz_generator.py` — parsing JSON, validation de payload
-- `test_api.py` — flux end-to-end via `TestClient`
-
-## Configuration
-
-Toutes les variables sont dans `.env` (voir `.env.example`). Les plus importantes :
-
-| Variable | Défaut | Effet |
-|----------|--------|-------|
-| `OLLAMA_MODEL` | `mistral:7b` | Modèle Ollama à utiliser. Alternatives : `phi3:mini`, `llama3:8b`, `gemma2:9b` |
-| `OLLAMA_TIMEOUT` | `120` | Timeout (s) des appels LLM |
-| `CHUNK_SIZE` | `500` | Tokens cibles par chunk |
-| `CHUNK_OVERLAP` | `50` | Chevauchement entre chunks |
-| `TOP_K_CHUNKS` | `5` | Chunks remontés par requête sémantique |
-| `QUESTIONS_FOR_ADAPTATION` | `5` | Taille de la fenêtre pour adapter la difficulté |
-
-## Gouvernance
-
-Chaque événement (upload, génération, réponse, suppression) est tracé dans `data/logs/audit-YYYY-MM-DD.jsonl` au format JSON Lines. Les questions stockent l'identifiant du chunk source utilisé, ce qui permet de vérifier qu'aucune réponse n'a été hallucinée hors corpus.
-
-## Arborescence
-
-```
-quizz-cours-IA/
-├── docker-compose.yml      Orchestration des 4 services
-├── Makefile                Raccourcis (run, stop, test, ...)
-├── .env / .env.example     Configuration
-├── backend/                FastAPI (api/, services/, models/, tests/)
-├── frontend/               Streamlit (app.py, pages/, components/)
-├── data/                   Volumes persistants (uploads, chroma, logs, db)
-├── corpus_exemple/         2 cours .md prêts à indexer
-├── docs/                   API reference, architecture
-└── scripts/                init_ollama.sh, seed_corpus.sh, run_tests.sh
-```
-
-## Pièges connus
-
-- **Premier démarrage long** : le pull du modèle `mistral:7b` (~4 Go) peut prendre plusieurs minutes. Suivez avec `docker logs -f tuteur-quiz-ollama`.
-- **PDF scannés** : PyMuPDF n'extrait pas l'image — l'OCR n'est pas inclus. Convertissez en `.md` ou `.txt` au préalable.
-- **Latence LLM** : sur CPU sans GPU, comptez 10–60 s par question. Réduire avec `phi3:mini`.
-- **Redémarrage propre** : `docker compose down` (sans `-v`) conserve les données. `make reset` les efface.
-
-## Licences
-
-Toutes les dépendances sont open-source :
-
-- Ollama (MIT), FastAPI (MIT), Streamlit (Apache 2.0), ChromaDB (Apache 2.0), sentence-transformers (Apache 2.0), PyMuPDF (AGPL — usage éducatif).
-- Modèle `mistral:7b` : licence Apache 2.0 (Mistral AI).
+> **Tout-en-un Docker**
+>
+> ```bash
+> docker compose up api
+> ```
+>
+> Le service `api` expose le port 8080. Les conteneurs vLLM / Infinity / Qdrant tournent sur l'hôte
+> et sont joints via `host.docker.internal`.
 
 ---
 
-*Projet Capstone — Module 11 — AI Agent Lab*
+## Utilisation
+
+### Ingérer un cours
+
+```bash
+# Via CLI
+pnpm cli ingest ./cours_reseaux.pdf ./cours_python.md
+
+# Via API (multipart)
+curl -X POST http://localhost:8080/ingest \
+  -F "file=@cours_reseaux.pdf" \
+  -F "file=@cours_python.md"
+```
+
+Le document est chargé (PDF, DOCX, MD, TXT), découpé en chunks de 800 tokens (overlap 120), vectorisé
+et upserted dans Qdrant.
+
+### Générer un quiz via chat
+
+```bash
+pnpm cli chat
+# > Crée un quiz de 5 questions QCM sur le chapitre 3 du cours Python
+```
+
+Le Router achemine vers l'Agent RAG, qui récupère les passages pertinents et appelle `quiz_generator`
+en sortie structurée (JSON validé Zod). Le quiz arrive en streaming SSE.
+
+### Passer le quiz
+
+Une fois le quiz reçu (objet `Quiz` dans l'événement `final.done`), soumettez vos réponses :
+
+```bash
+curl -X POST http://localhost:8080/quiz/submit \
+  -H "Content-Type: application/json" \
+  -d '{ "quiz": { ... }, "answers": [{ "questionIndex": 0, "answer": 2 }] }'
+```
+
+La réponse contient un score normalisé (0–1) et un feedback par question.
+
+---
+
+## Tests et sécurité
+
+- Tests unitaires et d'intégration : voir [`docs/tests.md`](docs/tests.md)
+- Revue de sécurité (prompt injection, rate-limit, validation) : voir [`docs/security.md`](docs/security.md)
+
+---
+
+## Structure du repo
+
+```
+quizz-cours-ia/
+├── packages/
+│   ├── core/          # LLM, RAG, outils, graph LangGraph, mémoire
+│   │   └── src/
+│   │       ├── graph/     # StateGraph, Router, agents, Aggregator, events
+│   │       ├── rag/       # loader, chunker, embeddings, Qdrant, retriever
+│   │       ├── tools/     # quiz_generator, quiz_evaluator, web_search, schemas
+│   │       ├── llm/       # client OpenAI-compat (vLLM), reasoning
+│   │       └── memory/    # checkpointer SQLite, SessionStore
+│   ├── api/           # Fastify — /health /ingest /chat /quiz/*
+│   ├── cli/           # commander + ink — health ingest chat
+│   └── web/           # React + Vite — upload, chat streamé, quiz player
+├── docs/
+│   ├── architecture.mmd
+│   └── decisions.md
+├── scripts/
+│   └── bootstrap-qdrant.ts
+├── data/              # uploads/, memory.db (gitignored)
+├── docker-compose.yml
+├── .env.example
+└── package.json
+```
+
+---
+
+## Licence
+
+Projet pédagogique — usage interne.

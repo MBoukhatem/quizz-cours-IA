@@ -1,0 +1,191 @@
+%% Quizz-Cours-IA — Architecture multi-agents end-to-end
+%% Stack: TypeScript (LangGraph.js) + React/Vite + CLI (ink) + vLLM (Qwen3.5-35B-A3B) + Infinity (bge-m3) + Qdrant
+%% Rendu conseillé : direction LR (Left → Right)
+
+flowchart LR
+
+    %% =========================================================
+    %% UTILISATEURS
+    %% =========================================================
+    subgraph USER["👤 Utilisateurs"]
+        U1["Étudiant<br/>(génère / passe un quiz)"]
+        U2["Formateur<br/>(ingère des cours)"]
+    end
+
+    %% =========================================================
+    %% INTERFACES
+    %% =========================================================
+    subgraph UI["🖥️ Interfaces (mêmes events, 2 vues)"]
+        direction TB
+        FE["React + Vite + Tailwind<br/>• Upload<br/>• Chat streamé<br/>• Quiz Player<br/>• Panneau Raisonnement"]
+        CLI["CLI (commander + ink)<br/>pnpm cli<br/>affiche [Routeur] [RAG] [Outil] [Final]"]
+    end
+
+    %% =========================================================
+    %% API
+    %% =========================================================
+    subgraph API["⚙️ API Fastify (TypeScript)"]
+        direction TB
+        A_AUTH["Auth + Rate-limit<br/>(fastify-rate-limit)"]
+        A_ZOD["Validation Zod"]
+        A_GUARD["Guard prompt-injection<br/>(regex + heuristiques)"]
+        A_INGEST["POST /ingest<br/>(multipart)"]
+        A_CHAT["POST /chat<br/>(SSE stream)"]
+        A_QSUB["POST /quiz/submit"]
+        A_HEALTH["GET /health"]
+    end
+
+    %% =========================================================
+    %% LANGGRAPH ORCHESTRATION
+    %% =========================================================
+    subgraph GRAPH["🧠 LangGraph.js — StateGraph"]
+        direction TB
+        G_IN(["Entry"])
+        G_ROUTER{{"🚦 Router<br/>LLM classifier<br/>→ cours_interne<br/>→ besoin_web<br/>→ quiz_action"}}
+        G_MEM["💾 Memory<br/>SQLite checkpointer<br/>(N≥3 derniers échanges<br/>par thread_id)"]
+        G_RAG["🔎 Agent RAG"]
+        G_TOOLS["🛠️ Agent Tools<br/>(ReAct loop)"]
+        G_AGG["📦 Aggregator<br/>+ citations<br/>+ schéma quiz"]
+        G_OUT(["Final<br/>(stream tokens + steps)"])
+    end
+
+    %% =========================================================
+    %% PIPELINE RAG
+    %% =========================================================
+    subgraph RAGP["📚 Pipeline RAG"]
+        direction TB
+        R_LOAD["Loader<br/>PDF · DOCX · MD · TXT<br/>(unpdf, mammoth)"]
+        R_CHUNK["Chunker<br/>RecursiveSplit<br/>800 tok / overlap 120<br/>(@langchain/textsplitters)"]
+        R_EMBED["Embedder client<br/>POST /embeddings"]
+        R_RETR["Retriever<br/>top_k=5 + MMR<br/>filtre par source"]
+    end
+
+    %% =========================================================
+    %% OUTILS
+    %% =========================================================
+    subgraph TOOLS["🧰 Outils (Zod-typed)"]
+        direction TB
+        T_WEB["🌐 web_search<br/>DuckDuckGo<br/>(duck-duck-scrape)"]
+        T_QGEN["📝 quiz_generator<br/>structured output<br/>QCM · V/F · ouvertes<br/>(strict JSON Zod)"]
+        T_QEVAL["📊 quiz_evaluator<br/>score + feedback<br/>par question"]
+    end
+
+    %% =========================================================
+    %% INFERENCE LAYER (déjà déployé en local)
+    %% =========================================================
+    subgraph LLM["🤖 Inference (containers existants)"]
+        direction TB
+        L_VLLM["vLLM · :11435/v1<br/>Qwen3.5-35B-A3B-GPTQ-Int4<br/>tool_calling=qwen3_coder<br/>reasoning=qwen3<br/>ctx 32 768"]
+        L_TEI["Infinity · :11436/embeddings<br/>BAAI/bge-m3 · 1024 dims"]
+    end
+
+    %% =========================================================
+    %% STOCKAGE
+    %% =========================================================
+    subgraph STORE["🗄️ Stockage"]
+        direction TB
+        S_QDRANT[("Qdrant · :6333<br/>collection quiz_cours<br/>cosine · 1024d")]
+        S_SQLITE[("SQLite<br/>memory.db<br/>sessions + scores")]
+        S_BLOB[("Volume<br/>data/uploads/")]
+    end
+
+    %% =========================================================
+    %% OBSERVABILITÉ & SÉCURITÉ
+    %% =========================================================
+    subgraph OBS["🔭 Observabilité & 🔐 Sécurité"]
+        direction TB
+        O_LOG["Logs structurés<br/>pino"]
+        O_TRACE["Tracing<br/>LangSmith (opt)"]
+        O_SEC["System prompt durci<br/>+ allowlist tools<br/>+ validation sorties"]
+        O_ENV["Secrets via .env<br/>(VLLM_API_KEY)"]
+    end
+
+    %% =========================================================
+    %% FLUX — Ingestion (formateur)
+    %% =========================================================
+    U2 -->|dépose cours| FE
+    FE -->|multipart/form-data| A_INGEST
+    A_INGEST --> A_ZOD --> R_LOAD --> R_CHUNK --> R_EMBED
+    R_EMBED -->|HTTP| L_TEI
+    L_TEI -->|vecteurs| R_EMBED
+    R_EMBED -->|upsert| S_QDRANT
+    R_LOAD -.->|fichier brut| S_BLOB
+
+    %% =========================================================
+    %% FLUX — Chat / Génération quiz
+    %% =========================================================
+    U1 -->|"« Crée un quiz<br/>sur le chap. 3 »"| FE
+    U1 -.->|REPL| CLI
+    FE -->|POST /chat| A_AUTH
+    CLI -->|même graph| A_AUTH
+    A_AUTH --> A_ZOD --> A_GUARD --> A_CHAT --> G_IN
+    G_IN --> G_MEM
+    G_MEM <-->|load/save state| S_SQLITE
+    G_MEM --> G_ROUTER
+
+    G_ROUTER -->|cours_interne| G_RAG
+    G_ROUTER -->|besoin_web · quiz_action| G_TOOLS
+
+    %% RAG branch
+    G_RAG -->|query| R_RETR
+    R_RETR -->|query embedding| L_TEI
+    R_RETR -->|search top_k| S_QDRANT
+    S_QDRANT -->|chunks + metadata| R_RETR
+    R_RETR -->|contexte cité| G_RAG
+    G_RAG -->|prompt + tool quiz_generator| L_VLLM
+
+    %% Tools branch (ReAct)
+    G_TOOLS -->|tool_call| T_WEB
+    G_TOOLS -->|tool_call| T_QGEN
+    T_WEB -->|résultats| G_TOOLS
+    T_QGEN -->|structured output| L_VLLM
+    L_VLLM -->|JSON quiz validé Zod| T_QGEN
+    T_QGEN --> G_TOOLS
+
+    %% Aggregation
+    G_RAG --> G_AGG
+    G_TOOLS --> G_AGG
+    L_VLLM -->|reasoning + content| G_AGG
+    G_AGG --> G_OUT
+
+    %% Stream retour
+    G_OUT -->|SSE events:<br/>router.decision · rag.docs<br/>tool.call · tool.result<br/>final.token| A_CHAT
+    A_CHAT -->|stream| FE
+    A_CHAT -->|stream| CLI
+
+    %% =========================================================
+    %% FLUX — Évaluation quiz
+    %% =========================================================
+    FE -->|réponses| A_QSUB
+    A_QSUB --> A_ZOD --> T_QEVAL --> L_VLLM
+    L_VLLM -->|score + feedback| T_QEVAL
+    T_QEVAL -->|persistance| S_SQLITE
+    T_QEVAL -->|résultat| FE
+
+    %% =========================================================
+    %% Observabilité transversale
+    %% =========================================================
+    G_ROUTER -.->|trace| O_TRACE
+    G_RAG -.->|trace| O_TRACE
+    G_TOOLS -.->|trace| O_TRACE
+    A_CHAT -.->|log| O_LOG
+    L_VLLM -.->|tokens · latence| O_LOG
+    A_GUARD -.->|alerte| O_SEC
+    L_VLLM -.->|key| O_ENV
+
+    %% =========================================================
+    %% STYLES
+    %% =========================================================
+    classDef agent fill:#e1f5ff,stroke:#0288d1,stroke-width:2px,color:#01579b;
+    classDef llm fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100;
+    classDef store fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c;
+    classDef sec fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c;
+    classDef tool fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20;
+    classDef ui fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#311b92;
+
+    class G_ROUTER,G_RAG,G_TOOLS,G_AGG,G_IN,G_OUT agent;
+    class L_VLLM,L_TEI llm;
+    class S_QDRANT,S_SQLITE,S_BLOB,G_MEM store;
+    class O_SEC,O_ENV,A_GUARD,A_AUTH sec;
+    class T_WEB,T_QGEN,T_QEVAL tool;
+    class FE,CLI ui;

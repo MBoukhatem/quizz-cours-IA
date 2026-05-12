@@ -1,192 +1,411 @@
-# API Reference
+# Référence API — Quizz-Cours-IA
 
-Base URL en local : `http://localhost:8000`
+Base URL (développement) : `http://localhost:8080`
 
-Swagger UI interactive : `/docs` · OpenAPI JSON : `/openapi.json`.
+Tous les corps de requête/réponse sont en JSON sauf `/ingest` (multipart).  
+La validation est assurée par Zod via `fastify-type-provider-zod`.
 
 ---
 
-## Santé
+## GET /health
 
-### `GET /api/health`
+Vérifie l'accessibilité des trois services externes.
 
-Vérifie la connectivité d'Ollama et de ChromaDB.
+**Réponse 200**
 
-**Réponse 200** :
+```ts
+{
+  status: "ok";
+  services: {
+    vllm:       "up" | "down";
+    embeddings: "up" | "down";
+    qdrant:     "up" | "down";
+  };
+}
+```
+
+**Exemple**
+
+```bash
+curl http://localhost:8080/health
+```
 
 ```json
 {
   "status": "ok",
-  "components": [
-    { "name": "ollama",   "healthy": true, "detail": "model 'mistral:7b' loaded" },
-    { "name": "chromadb", "healthy": true, "detail": "42 chunks indexed" }
-  ]
+  "services": { "vllm": "up", "embeddings": "up", "qdrant": "up" }
 }
 ```
 
-`status` ∈ `ok | degraded | down`.
-
 ---
 
-## Documents
+## POST /ingest
 
-### `POST /api/upload`
+Ingère un ou plusieurs documents dans Qdrant. Corps en `multipart/form-data`.
 
-Indexe un fichier PDF/MD/TXT (multipart form-data, champ `file`).
+**Contraintes**
+
+- Extensions acceptées : `.pdf`, `.docx`, `.md`, `.txt`
+- Taille maximale par fichier : 25 Mo
+- Les fichiers hors critères sont ignorés silencieusement (warning dans les logs).
+
+**Réponse 200**
+
+```ts
+{
+  ingested: Array<{
+    source: string;   // chemin du fichier sauvegardé
+    chunks: number;   // nombre de chunks upsertés dans Qdrant
+  }>;
+}
+```
+
+**Exemple**
 
 ```bash
-curl -X POST http://localhost:8000/api/upload \
-  -F "file=@cours.pdf"
+curl -X POST http://localhost:8080/ingest \
+  -F "file=@cours_reseaux.pdf" \
+  -F "file=@cours_python.md"
 ```
-
-**Réponse 200** :
 
 ```json
 {
-  "document_id": "doc_3f5a8c0b1d22",
-  "filename": "cours.pdf",
-  "n_chunks": 47,
-  "status": "indexed",
-  "message": "47 chunks indexés."
-}
-```
-
-Erreurs : `400` format non supporté · `422` aucun texte extractible (PDF scanné) · `500` erreur d'indexation.
-
-### `GET /api/documents`
-
-Liste paginée des documents indexés.
-
-```json
-{
-  "documents": [
-    { "document_id": "doc_xxx", "filename": "cours.pdf", "n_chunks": 47, "uploaded_at": "..." }
-  ],
-  "total": 1
-}
-```
-
-### `DELETE /api/documents/{document_id}`
-
-Supprime un document et ses chunks. `404` si inconnu.
-
----
-
-## Quiz
-
-### `POST /api/quiz/generate`
-
-Génère une question QCM. Le planificateur choisit la difficulté si elle n'est pas forcée.
-
-```json
-{
-  "session_id": "sess_abc",
-  "difficulty": "facile",       // optionnel: facile|moyen|difficile
-  "document_id": "doc_xxx"      // optionnel: restreindre à un document
-}
-```
-
-**Réponse 200** :
-
-```json
-{
-  "question_id": "q_4a9c0e1b6d11",
-  "session_id": "sess_abc",
-  "question": "Quelle est la complexité du tri par insertion ?",
-  "choices": ["O(1)", "O(log n)", "O(n^2)", "O(2^n)"],
-  "correct_index": 2,
-  "difficulty": "facile",
-  "source_document": "cours_python_bases.md",
-  "source_page": null,
-  "source_chunk": "Le tri par insertion a une complexité en O(n^2)...",
-  "chunk_id": "doc_xxx::cours_python_bases.md::chunk_18"
-}
-```
-
-Erreurs : `502` LLM injoignable ou réponse invalide après 2 tentatives.
-
-### `POST /api/quiz/answer`
-
-Corrige la réponse de l'étudiant.
-
-```json
-{
-  "question_id": "q_4a9c0e1b6d11",
-  "session_id": "sess_abc",
-  "selected_index": 2
-}
-```
-
-**Réponse 200** :
-
-```json
-{
-  "is_correct": true,
-  "correct_index": 2,
-  "explanation": "Bonne réponse. Le tri par insertion est en O(n^2)...",
-  "source_reference": "cours_python_bases.md",
-  "new_difficulty": "moyen",
-  "score_session": 7,
-  "total_session": 9
-}
-```
-
-### `GET /api/quiz/session/{session_id}`
-
-État courant d'une session.
-
-```json
-{
-  "session_id": "sess_abc",
-  "total_questions": 9,
-  "correct_answers": 7,
-  "current_difficulty": "moyen",
-  "success_rate": 77.78
-}
-```
-
----
-
-## Statistiques
-
-### `GET /api/stats/summary`
-
-```json
-{
-  "total_questions": 47,
-  "correct_answers": 31,
-  "success_rate": 65.96,
-  "current_difficulty": "moyen",
-  "sessions_count": 5,
-  "documents_indexed": 3,
-  "total_chunks": 156
-}
-```
-
-### `GET /api/stats/history?limit=50`
-
-Historique des sessions (du plus récent au plus ancien) : `session_id`, `started_at`, `total_questions`, `correct_answers`, `success_rate`.
-
-### `GET /api/stats/topics`
-
-Performance agrégée par document source.
-
-```json
-{
-  "topics": [
-    { "source_document": "cours_python_bases.md", "total": 20, "correct": 14, "success_rate": 70.0 }
+  "ingested": [
+    { "source": "data/uploads/a1b2c3_cours_reseaux.pdf", "chunks": 42 },
+    { "source": "data/uploads/d4e5f6_cours_python.md",   "chunks": 18 }
   ]
 }
 ```
 
 ---
 
-## Codes d'erreur
+## POST /chat
 
-| Code | Sens |
-|------|------|
-| 400  | Requête invalide (format de fichier non supporté, index hors bornes, etc.) |
-| 404  | Document inconnu |
-| 422  | Document indexable techniquement mais sans contenu textuel utile |
-| 500  | Erreur interne (extraction, indexation) |
-| 502  | LLM ou Vector DB injoignable |
+Lance une session de chat avec le graph multi-agents. La réponse est un flux
+**Server-Sent Events** (SSE).
+
+**Corps de la requête**
+
+```ts
+{
+  threadId: string;   // UUID v4 — identifie la session (mémoire SQLite)
+  message:  string;   // min 1 caractère, max 4000 caractères
+}
+```
+
+**Réponse 200 — flux SSE**
+
+Les en-têtes de réponse sont :
+
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+X-Accel-Buffering: no
+```
+
+Chaque trame respecte le format SSE standard :
+
+```
+event: <type>
+data: <json>
+
+```
+
+### Événements GraphEvent
+
+#### `router.decision`
+
+Émis par le noeud Router juste après la classification de l'intention.
+
+```ts
+{
+  type:   "router.decision";
+  route:  "rag" | "tools";              // branche choisie
+  intent: "answer" | "quiz";            // ce que l'utilisateur veut
+  reason: string;                       // justification du routeur
+}
+```
+
+Exemple de trame :
+
+```
+event: router.decision
+data: {"type":"router.decision","route":"rag","intent":"quiz","reason":"L'utilisateur demande un quiz sur le cours Python ingéré."}
+
+```
+
+#### `rag.docs`
+
+Émis par l'Agent RAG après la recherche vectorielle, avant la génération.
+
+```ts
+{
+  type:      "rag.docs";
+  citations: Array<{
+    id:     string;   // ID du chunk Qdrant
+    source: string;   // nom du fichier source
+    text:   string;   // extrait du chunk
+    score:  number;   // score de similarité cosine
+  }>;
+}
+```
+
+Exemple de trame :
+
+```
+event: rag.docs
+data: {"type":"rag.docs","citations":[{"id":"abc123","source":"cours_python.md","text":"Les listes Python sont...","score":0.91}]}
+
+```
+
+#### `tool.call`
+
+Émis au démarrage de chaque appel d'outil dans la boucle ReAct (Agent Outils).
+
+```ts
+{
+  type: "tool.call";
+  name: string;                      // "web_search" | "quiz_generator" | ...
+  args: Record<string, unknown>;     // arguments passés à l'outil
+}
+```
+
+Exemple de trame :
+
+```
+event: tool.call
+data: {"type":"tool.call","name":"quiz_generator","args":{"topic":"Listes Python","difficulty":"moyen","count":5}}
+
+```
+
+#### `tool.result`
+
+Émis à la fin de chaque appel d'outil.
+
+```ts
+{
+  type:   "tool.result";
+  name:   string;   // même nom que dans tool.call correspondant
+  result: string;   // résultat sérialisé (tronqué à l'affichage CLI, complet ici)
+}
+```
+
+Exemple de trame :
+
+```
+event: tool.result
+data: {"type":"tool.result","name":"web_search","result":"Python lists are ordered, mutable sequences..."}
+
+```
+
+#### `final.token`
+
+Émis pour chaque token streamé par le LLM lors de la génération finale.
+
+```ts
+{
+  type:  "final.token";
+  token: string;
+}
+```
+
+Exemple de trame :
+
+```
+event: final.token
+data: {"type":"final.token","token":"Voici"}
+
+```
+
+#### `final.done`
+
+Dernier événement du flux. Contient la réponse complète assemblée par l'Aggregator.
+
+```ts
+{
+  type: "final.done";
+  payload: {
+    text?:     string;             // réponse textuelle (si intent=answer)
+    quiz?: {                       // quiz structuré (si intent=quiz)
+      topic:      string;
+      difficulty: "facile" | "moyen" | "difficile";
+      questions:  Array<McqQuestion | TrueFalseQuestion | OpenQuestion>;
+    };
+    citations: Array<{             // toujours présent (vide si branche outils pure)
+      id:     string;
+      source: string;
+      text:   string;
+      score:  number;
+    }>;
+  };
+}
+```
+
+Exemple de trame (quiz) :
+
+```
+event: final.done
+data: {"type":"final.done","payload":{"quiz":{"topic":"Listes Python","difficulty":"moyen","questions":[{"type":"mcq","question":"Quelle méthode ajoute un élément en fin de liste ?","options":["insert()","append()","add()","push()"],"answerIndex":1,"explanation":"append() ajoute à la fin, insert() à un index donné."}]},"citations":[]}}
+
+```
+
+### Réponse 400 — injection détectée
+
+Si le guard heuristique détecte une tentative d'injection de prompt :
+
+```ts
+{
+  error:  "prompt_injection_detected";
+  reason: string;
+}
+```
+
+**Exemple complet**
+
+```bash
+curl -X POST http://localhost:8080/chat \
+  -H "Content-Type: application/json" \
+  -d '{"threadId":"550e8400-e29b-41d4-a716-446655440000","message":"Crée un quiz de 3 questions QCM sur les listes Python."}'
+```
+
+---
+
+## POST /quiz/submit
+
+Soumet les réponses d'un utilisateur et retourne l'évaluation.
+
+**Corps de la requête**
+
+```ts
+{
+  quiz: {
+    topic:      string;
+    difficulty: "facile" | "moyen" | "difficile";
+    questions:  Array<McqQuestion | TrueFalseQuestion | OpenQuestion>;
+  };
+  answers: Array<{
+    questionIndex: number;                      // index 0-based dans questions[]
+    answer:        string | number | boolean;   // selon le type de question
+  }>;
+}
+```
+
+Types de questions :
+
+```ts
+// QCM
+{ type: "mcq";        question: string; options: [string,string,string,string]; answerIndex: 0|1|2|3; explanation: string }
+// Vrai/Faux
+{ type: "true_false"; question: string; answer: boolean; explanation: string }
+// Ouverte
+{ type: "open";       question: string; expectedAnswer: string; rubric: string }
+```
+
+**Réponse 200**
+
+```ts
+{
+  items: Array<{
+    questionIndex: number;
+    correct:       boolean;
+    score:         number;   // 0.0 – 1.0
+    feedback:      string;
+  }>;
+  totalScore: number;   // 0.0 – 1.0, moyenne pondérée
+  summary:    string;   // commentaire global du LLM évaluateur
+}
+```
+
+**Exemple**
+
+```bash
+curl -X POST http://localhost:8080/quiz/submit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "quiz": {
+      "topic": "Listes Python",
+      "difficulty": "moyen",
+      "questions": [{
+        "type": "mcq",
+        "question": "Quelle méthode ajoute un élément en fin de liste ?",
+        "options": ["insert()","append()","add()","push()"],
+        "answerIndex": 1,
+        "explanation": "append() ajoute à la fin."
+      }]
+    },
+    "answers": [{ "questionIndex": 0, "answer": 1 }]
+  }'
+```
+
+```json
+{
+  "items": [{ "questionIndex": 0, "correct": true, "score": 1.0, "feedback": "Bonne réponse." }],
+  "totalScore": 1.0,
+  "summary": "Parfait, toutes les réponses sont correctes."
+}
+```
+
+---
+
+## GET /quiz/sessions
+
+Liste les sessions de quiz enregistrées pour un thread.
+
+**Query string**
+
+```ts
+{
+  threadId: string;   // UUID — obligatoire
+  limit?:   number;   // entier 1–100, défaut : toutes
+}
+```
+
+**Réponse 200**
+
+```ts
+{
+  sessions: Array<{
+    id:             string;
+    threadId:       string;
+    quizJson:       string;           // JSON sérialisé du Quiz
+    createdAt:      number;           // timestamp Unix ms
+    submittedAt:    number | null;
+    answersJson:    string | null;
+    evaluationJson: string | null;
+    score:          number | null;    // 0.0 – 1.0
+  }>;
+}
+```
+
+**Exemple**
+
+```bash
+curl "http://localhost:8080/quiz/sessions?threadId=550e8400-e29b-41d4-a716-446655440000&limit=5"
+```
+
+---
+
+## GET /quiz/sessions/:id
+
+Retourne une session par son identifiant.
+
+**Paramètre de chemin**
+
+```ts
+{ id: string }
+```
+
+**Réponse 200** — même forme qu'un élément du tableau `sessions` ci-dessus.
+
+**Réponse 404**
+
+```json
+{ "error": "session_not_found" }
+```
+
+**Exemple**
+
+```bash
+curl http://localhost:8080/quiz/sessions/sess_abc123
+```

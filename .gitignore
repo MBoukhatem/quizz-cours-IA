@@ -116,8 +116,23 @@ Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
+# ---------- TypeScript / Node ----------
+dist/
+*.db
+.turbo/
+coverage/
+
+# ---------- Runtime data ----------
+data/
+
 # ---------- Divers ----------
 *.pid
 *.seed
 *.pid.lock
 *.local
+
+# ---------- Tooling local (oh-my-claudecode) ----------
+.omc/
+
+# ---------- Fixtures ad-hoc ----------
+test_python.md
