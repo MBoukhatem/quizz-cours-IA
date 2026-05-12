@@ -21,13 +21,9 @@ services:
       - .env
     environment:
       QDRANT_URL: http://qdrant:6333
-      VLLM_BASE_URL: http://vllm:8000/v1
-      EMBEDDINGS_BASE_URL: http://infinity:7997
       SQLITE_PATH: /app/data/memory.db
-    networks:
-      - default
-      - vllm_net
-      - embeddings_net
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     volumes:
       - ./data:/app/data
     depends_on:
@@ -59,12 +55,8 @@ services:
       - .env
     environment:
       QDRANT_URL: http://qdrant:6333
-      VLLM_BASE_URL: http://vllm:8000/v1
-      EMBEDDINGS_BASE_URL: http://infinity:7997
-    networks:
-      - default
-      - vllm_net
-      - embeddings_net
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     volumes:
       - ./data:/app/data
     depends_on:
@@ -76,12 +68,3 @@ services:
 
 volumes:
   qdrant_data:
-
-networks:
-  default:
-  vllm_net:
-    name: rag-local_default
-    external: true
-  embeddings_net:
-    name: embeddings_default
-    external: true

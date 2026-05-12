@@ -1,31 +1,31 @@
 # Quizz-Cours-IA
 
-Générateur de quiz pédagogiques multi-agents avec RAG, sur LLM local.
+Générateur de quiz pédagogiques multi-agents avec RAG. Provider LLM au choix :
+OpenRouter (cloud, gratuit pour les modèles `:free`), OpenAI, ou vLLM local.
 
 ---
 
 ## Pourquoi
 
-Les étudiants et formateurs qui veulent s'autoévaluer sur un cours ont besoin de questions fidèles au
-contenu réel, pas à des connaissances génériques. Générer ces questions manuellement est long ; un LLM
-seul hallucine ou sort du contexte. Un système multi-agents permet de séparer les responsabilités :
-le Router décide de la source à consulter (cours interne ou web), l'Agent RAG ancre les réponses dans
-les documents indexés, l'Agent Outils génère du JSON structuré et évalue les réponses. Les données
-restent privées (vLLM local, Qdrant local) et le pipeline complet répond au cahier des charges du
-projet final : orchestration LangGraph, streaming SSE, mémoire persistante, interfaces multiples.
+Les étudiants et formateurs qui veulent s'autoévaluer sur un cours ont besoin de questions fidèles
+au contenu réel, pas à des connaissances génériques. Générer ces questions manuellement est long ;
+un LLM seul hallucine ou sort du contexte. Un système multi-agents permet de séparer les
+responsabilités : le **Router** décide de la source à consulter (cours interne ou web), l'**Agent
+RAG** ancre les réponses dans les documents indexés, l'**Agent Outils** génère du JSON structuré
+et évalue les réponses. Les embeddings restent locaux (Infinity / bge-m3), seule l'inférence LLM
+peut être déléguée à un provider OpenAI-compatible.
 
 ---
 
-## Architecture en bref
+## Architecture
 
-Le message de l'utilisateur entre dans un **StateGraph LangGraph.js**. Un noeud **Router** (classifieur
-LLM) choisit l'une des deux branches : **Agent RAG** (recherche vectorielle Qdrant avec embeddings
-bge-m3, top-k=5 + MMR) ou **Agent Outils** (boucle ReAct : DuckDuckGo + `quiz_generator`). Les deux
-branches convergent vers un noeud **Aggregator** qui assemble citations, quiz et texte final, puis
-émet le tout en **Server-Sent Events**. La mémoire de conversation est persistée dans SQLite via le
-checkpointer LangGraph, par `thread_id`.
+Message utilisateur → **StateGraph LangGraph.js** → noeud **Router** (classifieur LLM, branche
+`rag` ou `tools`) → **Agent RAG** (recherche vectorielle Qdrant, top-k=5) ou **Agent Outils**
+(boucle ReAct : DuckDuckGo + `quiz_generator`) → **Aggregator** qui assemble citations, quiz et
+texte final → émission **Server-Sent Events**. La mémoire de conversation est persistée dans
+SQLite via le checkpointer LangGraph, par `thread_id`.
 
-Voir le diagramme complet : [`docs/architecture.mmd`](docs/architecture.mmd)
+Voir le diagramme complet : [`docs/architecture.mmd`](docs/architecture.mmd).
 
 ---
 
@@ -35,98 +35,124 @@ Voir le diagramme complet : [`docs/architecture.mmd`](docs/architecture.mmd)
 |---|---|
 | Runtime | Node.js 22 + pnpm workspaces |
 | Orchestration agents | LangGraph.js (StateGraph) |
-| LLM | vLLM — Qwen3.5-35B-A3B-GPTQ-Int4 (port 11435) |
-| Embeddings | Infinity — BAAI/bge-m3, 1024 dims (port 11436) |
-| Vector store | Qdrant (port 6333), collection `quiz_cours` |
+| LLM | OpenAI-compatible — OpenRouter (par défaut), OpenAI, vLLM, Ollama… |
+| Embeddings | Infinity local — BAAI/bge-m3, 1024 dims |
+| Vector store | Qdrant (interne au compose) |
 | HTTP framework | Fastify v5 + Zod type-provider |
-| Mémoire / sessions | better-sqlite3 via `@langchain/langgraph-checkpoint-sqlite` |
+| Mémoire / sessions | better-sqlite3 + `@langchain/langgraph-checkpoint-sqlite` |
 | Interface web | React 19 + Vite + Tailwind v3 |
 | Interface CLI | commander + ink |
-| Recherche web | duck-duck-scrape (DDG, sans clé API) |
-| Observabilité | pino (logs), LangSmith optionnel |
+| Recherche web | duck-duck-scrape (sans clé API) |
+| Observabilité | pino (logs) |
 
 ---
 
-## Prérequis
+## Quick start (PC externe, ~5 minutes)
 
-- Node.js >= 22
-- pnpm >= 9
-- Docker (pour l'image API conteneurisée)
-- GPU avec vLLM déjà démarré sur `localhost:11435` (modèle Qwen3.5-35B-A3B)
-- Infinity déjà démarré sur `localhost:11436` (modèle bge-m3)
-- Qdrant déjà démarré sur `localhost:6333`
+### 1. Pré-requis
 
----
+- **Docker** + **Docker Compose** v2
+- **Une clé OpenRouter** gratuite — crée-la sur https://openrouter.ai/keys (les modèles `:free`
+  marchent sans crédit, juste limités à ~50 req/jour)
+- Optionnel : un GPU pour Infinity (CPU suffit, juste plus lent à l'upload)
 
-## Démarrage rapide
+### 2. Lancer Infinity (embeddings, à part)
+
+Un seul container, ~1 Go RAM, gratuit, données privées :
 
 ```bash
-cp .env.example .env        # remplir VLLM_API_KEY
-pnpm install
-pnpm bootstrap              # crée la collection Qdrant (quiz_cours, 1024d, cosine)
-pnpm --filter @quizz/api dev
-pnpm --filter @quizz/web dev
-pnpm cli health
-pnpm cli ingest ./mon_cours.pdf
-pnpm cli chat
+docker run -d --name infinity -p 11436:7997 \
+  michaelf34/infinity:latest \
+  v2 --model-id BAAI/bge-m3 --port 7997
 ```
 
-> **Tout-en-un Docker**
->
-> ```bash
-> docker compose up api
-> ```
->
-> Le service `api` expose le port 8080. Les conteneurs vLLM / Infinity / Qdrant tournent sur l'hôte
-> et sont joints via `host.docker.internal`.
+Avec GPU NVIDIA : ajoute `--gpus all` après `-d`.
+
+### 3. Cloner + configurer
+
+```bash
+git clone https://github.com/MBoukhatem/quizz-cours-IA.git
+cd quizz-cours-IA
+cp .env.example .env
+# Édite .env : remplace VLLM_API_KEY par ta clé OpenRouter (sk-or-v1-...)
+```
+
+### 4. Lancer la stack
+
+```bash
+docker compose up -d --build
+```
+
+3 containers démarrent : `qdrant`, `api`, `web`. Le port `4190` est exposé sur l'hôte.
+
+### 5. Vérifier
+
+```bash
+curl http://localhost:4190/api/health
+# {"status":"ok","services":{"vllm":"up","embeddings":"up","qdrant":"up"}}
+```
+
+Ouvre **http://localhost:4190/** dans Chrome → drop un PDF/MD → "Générer le quiz".
+
+---
+
+## Choix du modèle LLM
+
+Édite `VLLM_MODEL` dans `.env`. Modèles free testés OpenRouter (tool calling supporté) :
+
+| Modèle | Qualité FR | Notes |
+|---|---|---|
+| `google/gemini-2.0-flash-exp:free` | ⭐⭐⭐⭐⭐ | rapide, fiable, recommandé |
+| `meta-llama/llama-3.3-70b-instruct:free` | ⭐⭐⭐⭐ | bon mais quota strict |
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | ⭐⭐⭐⭐ | reasoning model, plus lent |
+| `qwen/qwen3-235b-a22b:free` | ⭐⭐⭐⭐ | gros modèle, lent en free |
+
+Modèles payants (~$0.0001/quiz) :
+- `openai/gpt-4o-mini`
+- `anthropic/claude-3.5-sonnet`
+- `meta-llama/llama-3.3-70b-instruct`
+
+Pour basculer sur **vLLM local** (Qwen3.5-35B sur GPU 24 Go) : commente les 3 lignes
+OpenRouter dans `.env` et décommente le bloc vLLM. Lance vLLM séparément avant le `compose up`.
 
 ---
 
 ## Utilisation
 
-### Ingérer un cours
+### Ingérer + générer en CLI
 
 ```bash
-# Via CLI
-pnpm cli ingest ./cours_reseaux.pdf ./cours_python.md
-
-# Via API (multipart)
-curl -X POST http://localhost:8080/ingest \
-  -F "file=@cours_reseaux.pdf" \
-  -F "file=@cours_python.md"
+docker compose run --rm cli health
+docker compose run --rm cli ingest /app/data/uploads/mon_cours.pdf
 ```
 
-Le document est chargé (PDF, DOCX, MD, TXT), découpé en chunks de 800 tokens (overlap 120), vectorisé
-et upserted dans Qdrant.
-
-### Générer un quiz via chat
+### Via API (curl)
 
 ```bash
-pnpm cli chat
-# > Crée un quiz de 5 questions QCM sur le chapitre 3 du cours Python
+# Ingest
+curl -X POST http://localhost:4190/api/ingest \
+  -F "files=@cours_python.md"
+
+# Générer un quiz (synchrone)
+curl -X POST http://localhost:4190/api/quiz \
+  -H 'content-type: application/json' \
+  -d '{"threadId":"'$(uuidgen)'","source":"cours_python.md","numQuestions":5}'
+
+# Soumettre des réponses
+curl -X POST http://localhost:4190/api/quiz/submit \
+  -H 'content-type: application/json' \
+  -d '{"sessionId":"...","threadId":"...","answers":{"q0":"int","q1":"true"}}'
 ```
 
-Le Router achemine vers l'Agent RAG, qui récupère les passages pertinents et appelle `quiz_generator`
-en sortie structurée (JSON validé Zod). Le quiz arrive en streaming SSE.
-
-### Passer le quiz
-
-Une fois le quiz reçu (objet `Quiz` dans l'événement `final.done`), soumettez vos réponses :
-
-```bash
-curl -X POST http://localhost:8080/quiz/submit \
-  -H "Content-Type: application/json" \
-  -d '{ "quiz": { ... }, "answers": [{ "questionIndex": 0, "answer": 2 }] }'
-```
-
-La réponse contient un score normalisé (0–1) et un feedback par question.
+Voir [`docs/api_reference.md`](docs/api_reference.md) pour le détail des schémas.
 
 ---
 
 ## Tests et sécurité
 
-- Tests unitaires et d'intégration : voir [`docs/tests.md`](docs/tests.md)
-- Revue de sécurité (prompt injection, rate-limit, validation) : voir [`docs/security.md`](docs/security.md)
+- Tests : voir [`docs/tests.md`](docs/tests.md)
+- Sécurité (prompt injection, rate-limit, validation) : voir [`docs/security.md`](docs/security.md)
+- Décisions techniques : voir [`docs/decisions.md`](docs/decisions.md)
 
 ---
 
@@ -137,20 +163,22 @@ quizz-cours-ia/
 ├── packages/
 │   ├── core/          # LLM, RAG, outils, graph LangGraph, mémoire
 │   │   └── src/
-│   │       ├── graph/     # StateGraph, Router, agents, Aggregator, events
+│   │       ├── graph/     # StateGraph, Router, agents, Aggregator
 │   │       ├── rag/       # loader, chunker, embeddings, Qdrant, retriever
-│   │       ├── tools/     # quiz_generator, quiz_evaluator, web_search, schemas
-│   │       ├── llm/       # client OpenAI-compat (vLLM), reasoning
+│   │       ├── tools/     # quiz_generator, quiz_evaluator, web_search
+│   │       ├── llm/       # client OpenAI-compat
 │   │       └── memory/    # checkpointer SQLite, SessionStore
 │   ├── api/           # Fastify — /health /ingest /chat /quiz/*
 │   ├── cli/           # commander + ink — health ingest chat
-│   └── web/           # React + Vite — upload, chat streamé, quiz player
+│   └── web/           # React + Vite — upload, quiz player, eval view
 ├── docs/
 │   ├── architecture.mmd
-│   └── decisions.md
+│   ├── api_reference.md
+│   ├── decisions.md
+│   ├── security.md
+│   └── tests.md
 ├── scripts/
 │   └── bootstrap-qdrant.ts
-├── data/              # uploads/, memory.db (gitignored)
 ├── docker-compose.yml
 ├── .env.example
 └── package.json
