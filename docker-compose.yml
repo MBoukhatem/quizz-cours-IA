@@ -1,70 +1,30 @@
-name: quizz-cours-ia
-
 services:
-  qdrant:
-    image: qdrant/qdrant:latest
+  chromadb:
+    image: chromadb/chroma:0.5.20
     volumes:
-      - qdrant_data:/qdrant/storage
+      - chroma_data:/data
     healthcheck:
-      test: ['CMD-SHELL', 'bash -c ":> /dev/tcp/127.0.0.1/6333" || exit 1']
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
       interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
-    restart: unless-stopped
-
-  api:
-    build:
-      context: .
-      dockerfile: packages/api/Dockerfile
-    env_file:
-      - .env
-    environment:
-      QDRANT_URL: http://qdrant:6333
-      SQLITE_PATH: /app/data/memory.db
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-    volumes:
-      - ./data:/app/data
-    depends_on:
-      qdrant:
-        condition: service_started
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health']
-      interval: 30s
       timeout: 5s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
+      retries: 5
 
-  web:
-    build:
-      context: .
-      dockerfile: packages/web/Dockerfile
-    ports:
-      - '4190:80'
+  app:
+    build: .
     depends_on:
-      - api
-    restart: unless-stopped
-
-  cli:
-    build:
-      context: .
-      dockerfile: packages/cli/Dockerfile
+      chromadb:
+        condition: service_healthy
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      QDRANT_URL: http://qdrant:6333
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
     volumes:
       - ./data:/app/data
-    depends_on:
-      - qdrant
-    stdin_open: true
+      - ./.chroma:/app/.chroma
     tty: true
-    profiles:
-      - cli
+    stdin_open: true
 
 volumes:
-  qdrant_data:
+  chroma_data:

@@ -1,138 +1,43 @@
-# ---------- Python ----------
+# Python
+*.pyc
+*.pyo
+*.pyd
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg
 *.egg-info/
-.eggs/
-build/
+*.egg
 dist/
-develop-eggs/
-downloads/
-eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-MANIFEST
-pip-log.txt
-pip-delete-this-directory.txt
+build/
+.eggs/
 
-# ---------- Virtual envs ----------
+# Virtual environments
 .venv/
 venv/
-ENV/
 env/
-env.bak/
-venv.bak/
 
-# ---------- Tests / coverage ----------
-.pytest_cache/
-.tox/
-.nox/
-.cache/
-.coverage
-.coverage.*
-coverage.xml
-htmlcov/
-.hypothesis/
-nosetests.xml
-*.cover
-*.py,cover
-
-# ---------- Type checkers / linters ----------
-.mypy_cache/
-.pyre/
-.pytype/
-.ruff_cache/
-.dmypy.json
-dmypy.json
-
-# ---------- Streamlit ----------
-.streamlit/secrets.toml
-
-# ---------- Jupyter / IPython ----------
-.ipynb_checkpoints/
-profile_default/
-ipython_config.py
-
-# ---------- Env files (keep .env.example) ----------
+# Environment variables
 .env
-.env.*
-!.env.example
 
-# ---------- Project data (runtime, not source) ----------
-data/uploads/*
-!data/uploads/.gitkeep
-data/chroma/*
-!data/chroma/.gitkeep
-data/logs/*
-!data/logs/.gitkeep
-data/db/*
-!data/db/.gitkeep
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
 
-# ---------- Logs ----------
-*.log
-logs/
-*.log.*
+# ChromaDB local data
+.chroma/
 
-# ---------- Docker ----------
-docker-compose.override.yml
-.docker/
+# Uploaded documents
+data/uploads/
 
-# ---------- Node (au cas où, frontends futurs) ----------
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# ---------- IDE / éditeurs ----------
-.idea/
+# IDE
 .vscode/
+.idea/
 *.swp
 *.swo
-*.swn
-*.bak
-*.tmp
-*~
-.project
-.pydevproject
-.settings/
+*.DS_Store
 
-# ---------- OS ----------
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-Desktop.ini
-$RECYCLE.BIN/
+# Node (defensive)
+node_modules/
 
-# ---------- TypeScript / Node ----------
-dist/
-*.db
-.turbo/
-coverage/
-
-# ---------- Runtime data ----------
-data/
-
-# ---------- Divers ----------
-*.pid
-*.seed
-*.pid.lock
-*.local
-
-# ---------- Tooling local (oh-my-claudecode) ----------
-.omc/
-
-# ---------- Fixtures ad-hoc ----------
-test_python.md
+# Type checking
+.mypy_cache/
+.dmypy.json

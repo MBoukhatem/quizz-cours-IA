@@ -1,191 +1,108 @@
-# Quizz-Cours-IA
+# quizz-cours-IA
 
-Générateur de quiz pédagogiques multi-agents avec RAG. Provider LLM au choix :
-OpenRouter (cloud, gratuit pour les modèles `:free`), OpenAI, ou vLLM local.
-
----
-
-## Pourquoi
-
-Les étudiants et formateurs qui veulent s'autoévaluer sur un cours ont besoin de questions fidèles
-au contenu réel, pas à des connaissances génériques. Générer ces questions manuellement est long ;
-un LLM seul hallucine ou sort du contexte. Un système multi-agents permet de séparer les
-responsabilités : le **Router** décide de la source à consulter (cours interne ou web), l'**Agent
-RAG** ancre les réponses dans les documents indexés, l'**Agent Outils** génère du JSON structuré
-et évalue les réponses. Les embeddings restent locaux (Infinity / bge-m3), seule l'inférence LLM
-peut être déléguée à un provider OpenAI-compatible.
+Générateur de quiz pédagogiques multi-agents à partir de vos documents de cours.
+Ingérez un PDF, un DOCX ou un fichier Markdown, posez une question ou demandez un quiz,
+et obtenez des questions ancrées dans votre support avec citations de sources.
 
 ---
 
 ## Architecture
 
-Message utilisateur → **StateGraph LangGraph.js** → noeud **Router** (classifieur LLM, branche
-`rag` ou `tools`) → **Agent RAG** (recherche vectorielle Qdrant, top-k=5) ou **Agent Outils**
-(boucle ReAct : DuckDuckGo + `quiz_generator`) → **Aggregator** qui assemble citations, quiz et
-texte final → émission **Server-Sent Events**. La mémoire de conversation est persistée dans
-SQLite via le checkpointer LangGraph, par `thread_id`.
+Voir [docs/architecture.md](docs/architecture.md) pour le diagramme complet.
 
-Voir le diagramme complet : [`docs/architecture.mmd`](docs/architecture.mmd).
+```
+Utilisateur
+    |
+    v
+[CLI Rich] --> [Routeur] --> [RAG agent]   --> [Finalizer] --> Réponse
+                       \--> [Tools agent] /
+                              |
+                          web_search / quiz_generator
+```
+
+Le routeur analyse la requête et décide :
+- **rag** : la question porte sur les documents ingérés (cours, supports).
+- **tools** : la question est générale ou porte sur l'actualité (recherche web + quiz).
 
 ---
 
 ## Stack
 
-| Composant | Choix |
+| Composant | Technologie |
 |---|---|
-| Runtime | Node.js 22 + pnpm workspaces |
-| Orchestration agents | LangGraph.js (StateGraph) |
-| LLM | OpenAI-compatible — OpenRouter (par défaut), OpenAI, vLLM, Ollama… |
-| Embeddings | Infinity local — BAAI/bge-m3, 1024 dims |
-| Vector store | Qdrant (interne au compose) |
-| HTTP framework | Fastify v5 + Zod type-provider |
-| Mémoire / sessions | better-sqlite3 + `@langchain/langgraph-checkpoint-sqlite` |
-| Interface web | React 19 + Vite + Tailwind v3 |
-| Interface CLI | commander + ink |
-| Recherche web | duck-duck-scrape (sans clé API) |
-| Observabilité | pino (logs) |
+| Orchestration | LangGraph |
+| LLM | OpenRouter (modèles gratuits) |
+| Modèle principal | `meta-llama/llama-3.3-70b-instruct:free` |
+| Modèle fallback | `google/gemini-2.0-flash-exp:free` |
+| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` (local) |
+| Vector DB | ChromaDB |
+| CLI | Rich |
+| Recherche web | duckduckgo-search |
+| Tests | pytest |
+| Validation | pydantic v2 |
 
 ---
 
-## Quick start (PC externe, ~5 minutes)
-
-### 1. Pré-requis
-
-- **Docker** + **Docker Compose** v2
-- **Une clé OpenRouter** gratuite — crée-la sur https://openrouter.ai/keys (les modèles `:free`
-  marchent sans crédit, juste limités à ~50 req/jour)
-- Optionnel : un GPU pour Infinity (CPU suffit, juste plus lent à l'upload)
-
-### 2. Lancer Infinity (embeddings, à part)
-
-Un seul container, ~1 Go RAM, gratuit, données privées :
+## Démarrage rapide (Docker)
 
 ```bash
-docker run -d --name infinity -p 11436:7997 \
-  michaelf34/infinity:latest \
-  v2 --model-id BAAI/bge-m3 --port 7997
-```
-
-Avec GPU NVIDIA : ajoute `--gpus all` après `-d`.
-
-### 3. Cloner + configurer
-
-```bash
-git clone https://github.com/MBoukhatem/quizz-cours-IA.git
-cd quizz-cours-IA
 cp .env.example .env
-# Édite .env : remplace VLLM_API_KEY par ta clé OpenRouter (sk-or-v1-...)
+# Editez .env et renseignez OPENROUTER_API_KEY
+docker compose up --build
 ```
 
-### 4. Lancer la stack
+Dans le CLI interactif qui s'ouvre :
+
+```
+> /ingest data/samples/lecture_ml.md
+> Génère un quiz de 5 questions sur le machine learning supervisé
+```
+
+---
+
+## Démarrage local (sans Docker)
 
 ```bash
-docker compose up -d --build
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Editez .env et renseignez OPENROUTER_API_KEY
+python -m app.main
 ```
 
-3 containers démarrent : `qdrant`, `api`, `web`. Le port `4190` est exposé sur l'hôte.
+ChromaDB sera utilisé en mode persistant local (`./.chroma`) si le conteneur n'est pas disponible.
 
-### 5. Vérifier
+---
+
+## Commandes CLI
+
+| Commande | Description |
+|---|---|
+| `/ingest <chemin>` | Ingère un document (PDF, DOCX, TXT, MD) dans le store |
+| `/reset` | Vide la mémoire conversationnelle et le store vectoriel |
+| `/status` | Affiche le nombre de chunks, la taille de la mémoire et le modèle |
+| `/help` | Affiche la liste des commandes |
+| `/quit` ou `/exit` | Quitter le REPL |
+| `<texte>` | Toute autre saisie est traitée comme une requête |
+
+---
+
+## Tests
 
 ```bash
-curl http://localhost:4190/api/health
-# {"status":"ok","services":{"vllm":"up","embeddings":"up","qdrant":"up"}}
+pytest
 ```
 
-Ouvre **http://localhost:4190/** dans Chrome → drop un PDF/MD → "Générer le quiz".
-
----
-
-## Choix du modèle LLM
-
-Édite `VLLM_MODEL` dans `.env`. Modèles free testés OpenRouter (tool calling supporté) :
-
-| Modèle | Qualité FR | Notes |
-|---|---|---|
-| `google/gemini-2.0-flash-exp:free` | ⭐⭐⭐⭐⭐ | rapide, fiable, recommandé |
-| `meta-llama/llama-3.3-70b-instruct:free` | ⭐⭐⭐⭐ | bon mais quota strict |
-| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | ⭐⭐⭐⭐ | reasoning model, plus lent |
-| `qwen/qwen3-235b-a22b:free` | ⭐⭐⭐⭐ | gros modèle, lent en free |
-
-Modèles payants (~$0.0001/quiz) :
-- `openai/gpt-4o-mini`
-- `anthropic/claude-3.5-sonnet`
-- `meta-llama/llama-3.3-70b-instruct`
-
-Pour basculer sur **vLLM local** (Qwen3.5-35B sur GPU 24 Go) : commente les 3 lignes
-OpenRouter dans `.env` et décommente le bloc vLLM. Lance vLLM séparément avant le `compose up`.
-
----
-
-## Utilisation
-
-### Ingérer + générer en CLI
+Pour lancer uniquement les tests sans clé API :
 
 ```bash
-docker compose run --rm cli health
-docker compose run --rm cli ingest /app/data/uploads/mon_cours.pdf
-```
-
-### Via API (curl)
-
-```bash
-# Ingest
-curl -X POST http://localhost:4190/api/ingest \
-  -F "files=@cours_python.md"
-
-# Générer un quiz (synchrone)
-curl -X POST http://localhost:4190/api/quiz \
-  -H 'content-type: application/json' \
-  -d '{"threadId":"'$(uuidgen)'","source":"cours_python.md","numQuestions":5}'
-
-# Soumettre des réponses
-curl -X POST http://localhost:4190/api/quiz/submit \
-  -H 'content-type: application/json' \
-  -d '{"sessionId":"...","threadId":"...","answers":{"q0":"int","q1":"true"}}'
-```
-
-Voir [`docs/api_reference.md`](docs/api_reference.md) pour le détail des schémas.
-
----
-
-## Tests et sécurité
-
-- Tests : voir [`docs/tests.md`](docs/tests.md)
-- Sécurité (prompt injection, rate-limit, validation) : voir [`docs/security.md`](docs/security.md)
-- Décisions techniques : voir [`docs/decisions.md`](docs/decisions.md)
-
----
-
-## Structure du repo
-
-```
-quizz-cours-ia/
-├── packages/
-│   ├── core/          # LLM, RAG, outils, graph LangGraph, mémoire
-│   │   └── src/
-│   │       ├── graph/     # StateGraph, Router, agents, Aggregator
-│   │       ├── rag/       # loader, chunker, embeddings, Qdrant, retriever
-│   │       ├── tools/     # quiz_generator, quiz_evaluator, web_search
-│   │       ├── llm/       # client OpenAI-compat
-│   │       └── memory/    # checkpointer SQLite, SessionStore
-│   ├── api/           # Fastify — /health /ingest /chat /quiz/*
-│   ├── cli/           # commander + ink — health ingest chat
-│   └── web/           # React + Vite — upload, quiz player, eval view
-├── docs/
-│   ├── architecture.mmd
-│   ├── api_reference.md
-│   ├── decisions.md
-│   ├── security.md
-│   └── tests.md
-├── scripts/
-│   └── bootstrap-qdrant.ts
-├── docker-compose.yml
-├── .env.example
-└── package.json
+pytest tests/test_security.py tests/test_tools.py
 ```
 
 ---
 
-## Licence
+## Sécurité
 
-Projet pédagogique — usage interne.
+Voir [docs/security.md](docs/security.md) pour la matrice des risques et les parades
+contre les attaques par injection de prompt.

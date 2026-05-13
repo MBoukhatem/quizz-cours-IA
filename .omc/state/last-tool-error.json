@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"python3 -c \\\"import chromadb; print('chromadb ok', chromadb.__version__)\\\" 2>&1 && python3 -c \\\"import sentence_transformers; print('sentence_transformers ok')\\\" 2>&1 && python3 -c \\\"impor...",
+  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import chromadb; print('chromadb ok', chromadb.__version__)\n    ^^^^^^^^^^^^^^^\nModuleNotFoundError: No module named 'chromadb'",
+  "timestamp": "2026-05-13T08:49:33.759Z",
+  "retry_count": 1
+}

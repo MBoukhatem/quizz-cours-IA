@@ -1,0 +1,266 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1778660827353,
+  "projectRoot": "/home/mboukhatem/quizz-cours-IA",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "OPENROUTER_API_KEY=sk-or-v1-REPLACE_ME /tmp/qcia-venv/bin/pytest -q 2>&1 | tail -5",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {},
+  "hotPaths": [
+    {
+      "path": "app/config.py",
+      "accessCount": 6,
+      "lastAccessed": 1778662255222,
+      "type": "file"
+    },
+    {
+      "path": "app/llm.py",
+      "accessCount": 5,
+      "lastAccessed": 1778662539966,
+      "type": "file"
+    },
+    {
+      "path": "app/state.py",
+      "accessCount": 4,
+      "lastAccessed": 1778661503904,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 4,
+      "lastAccessed": 1778662454997,
+      "type": "file"
+    },
+    {
+      "path": "app/rag/agent.py",
+      "accessCount": 3,
+      "lastAccessed": 1778662262676,
+      "type": "file"
+    },
+    {
+      "path": "app/tools/agent.py",
+      "accessCount": 3,
+      "lastAccessed": 1778662266245,
+      "type": "file"
+    },
+    {
+      "path": "tests/conftest.py",
+      "accessCount": 3,
+      "lastAccessed": 1778662295663,
+      "type": "file"
+    },
+    {
+      "path": "docker-compose.yml",
+      "accessCount": 3,
+      "lastAccessed": 1778662348060,
+      "type": "file"
+    },
+    {
+      "path": "app/main.py",
+      "accessCount": 3,
+      "lastAccessed": 1778662399806,
+      "type": "file"
+    },
+    {
+      "path": "docs/architecture.md",
+      "accessCount": 3,
+      "lastAccessed": 1778662507520,
+      "type": "file"
+    },
+    {
+      "path": "app/security/prompt_guard.py",
+      "accessCount": 3,
+      "lastAccessed": 1778662554081,
+      "type": "file"
+    },
+    {
+      "path": "app/memory.py",
+      "accessCount": 2,
+      "lastAccessed": 1778661503847,
+      "type": "file"
+    },
+    {
+      "path": "app/rag/vectorstore.py",
+      "accessCount": 2,
+      "lastAccessed": 1778661507485,
+      "type": "file"
+    },
+    {
+      "path": "app/tools/quiz_generator.py",
+      "accessCount": 2,
+      "lastAccessed": 1778661508291,
+      "type": "file"
+    },
+    {
+      "path": "app/rag/loader.py",
+      "accessCount": 2,
+      "lastAccessed": 1778661513360,
+      "type": "file"
+    },
+    {
+      "path": "app/graph.py",
+      "accessCount": 2,
+      "lastAccessed": 1778662239643,
+      "type": "file"
+    },
+    {
+      "path": "app/router.py",
+      "accessCount": 2,
+      "lastAccessed": 1778662258048,
+      "type": "file"
+    },
+    {
+      "path": "app/cli.py",
+      "accessCount": 2,
+      "lastAccessed": 1778662269928,
+      "type": "file"
+    },
+    {
+      "path": "docs/tests.md",
+      "accessCount": 2,
+      "lastAccessed": 1778662475782,
+      "type": "file"
+    },
+    {
+      "path": "docs/security.md",
+      "accessCount": 2,
+      "lastAccessed": 1778662480344,
+      "type": "file"
+    },
+    {
+      "path": ".env.example",
+      "accessCount": 2,
+      "lastAccessed": 1778662526057,
+      "type": "file"
+    },
+    {
+      "path": ".dockerignore",
+      "accessCount": 1,
+      "lastAccessed": 1778661091612,
+      "type": "file"
+    },
+    {
+      "path": "requirements.txt",
+      "accessCount": 1,
+      "lastAccessed": 1778661099066,
+      "type": "file"
+    },
+    {
+      "path": "pyproject.toml",
+      "accessCount": 1,
+      "lastAccessed": 1778661102596,
+      "type": "file"
+    },
+    {
+      "path": "Dockerfile",
+      "accessCount": 1,
+      "lastAccessed": 1778661105315,
+      "type": "file"
+    },
+    {
+      "path": "data/samples/lecture_ml.md",
+      "accessCount": 1,
+      "lastAccessed": 1778661144676,
+      "type": "file"
+    },
+    {
+      "path": "data/samples/README.md",
+      "accessCount": 1,
+      "lastAccessed": 1778661147760,
+      "type": "file"
+    },
+    {
+      "path": "app/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661219663,
+      "type": "file"
+    },
+    {
+      "path": "app/security/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661220482,
+      "type": "file"
+    },
+    {
+      "path": "app/rag/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661301723,
+      "type": "file"
+    },
+    {
+      "path": "app/rag/chunker.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661312058,
+      "type": "file"
+    },
+    {
+      "path": "app/rag/embeddings.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661315467,
+      "type": "file"
+    },
+    {
+      "path": "app/tools/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661386359,
+      "type": "file"
+    },
+    {
+      "path": "app/tools/web_search.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661388688,
+      "type": "file"
+    },
+    {
+      "path": "tests/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661564439,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_rag.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661584576,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_tools.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661593964,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_security.py",
+      "accessCount": 1,
+      "lastAccessed": 1778661601313,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}
