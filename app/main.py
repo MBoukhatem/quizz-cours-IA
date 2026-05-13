@@ -26,12 +26,11 @@ def main() -> None:
     for noisy in ("httpx", "httpcore", "sentence_transformers", "chromadb"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    placeholder = "sk-or-v1-REPLACE_ME"
-    key = settings.openrouter_api_key
-    if not key or key == placeholder:
+    key = settings.gemini_api_key
+    if not key or key == "REPLACE_ME":
         print(
-            "Erreur: OPENROUTER_API_KEY manquante ou non configurée.\n"
-            "Copiez .env.example vers .env et renseignez votre clé OpenRouter.",
+            "Erreur: GEMINI_API_KEY manquante ou non configurée.\n"
+            "Copiez .env.example vers .env et renseignez votre clé Google AI Studio.",
             file=sys.stderr,
         )
         sys.exit(2)

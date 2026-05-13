@@ -4,9 +4,9 @@ import json
 import logging
 
 from app.config import get_settings
-from app.llm import OpenRouterClient
+from app.llm import GeminiClient
 from app.state import GraphState
-from app.tools.quiz_generator import QuizGenerationError, generate_quiz
+from app.tools.quiz_generator import QuizGenerationError, extract_n_questions, generate_quiz
 from app.tools.web_search import web_search
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ _TOOLS_SYSTEM_PROMPT = (
 )
 
 
-def _needs_web_search(query: str, llm: OpenRouterClient) -> bool:
+def _needs_web_search(query: str, llm: GeminiClient) -> bool:
     lower = query.lower()
     if any(kw in lower for kw in _WEB_KEYWORDS):
         return True
@@ -49,7 +49,7 @@ def _needs_web_search(query: str, llm: OpenRouterClient) -> bool:
         return True
 
 
-def tools_node(state: GraphState, *, llm: OpenRouterClient) -> GraphState:
+def tools_node(state: GraphState, *, llm: GeminiClient) -> GraphState:
     query: str = state["user_query"]
     thoughts: list[dict] = list(state.get("thoughts") or [])
 
@@ -79,11 +79,13 @@ def tools_node(state: GraphState, *, llm: OpenRouterClient) -> GraphState:
 
     if wants_quiz:
         settings = get_settings()
+        n_questions = extract_n_questions(query, default=settings.quiz_default_questions)
+        thoughts.append({"stage": "Outil", "content": f"Quiz demandé : {n_questions} questions"})
         try:
             quiz = generate_quiz(
                 topic=query,
                 context=context,
-                n_questions=settings.quiz_default_questions,
+                n_questions=n_questions,
                 llm=llm,
             )
             thoughts.append(

@@ -9,7 +9,7 @@ services:
       timeout: 5s
       retries: 5
 
-  app:
+  api:
     build: .
     depends_on:
       chromadb:
@@ -23,8 +23,40 @@ services:
     volumes:
       - ./data:/app/data
       - ./.chroma:/app/.chroma
+      - hf_cache:/app/.hf_cache
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_API_PROXY: http://api:8000
+    depends_on:
+      - api
+    ports:
+      - "5173:5173"
+
+  cli:
+    image: quizz-cours-ia-api:latest
+    profiles: ["cli"]
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+    volumes:
+      - ./data:/app/data
+      - ./.chroma:/app/.chroma
+      - hf_cache:/app/.hf_cache
     tty: true
     stdin_open: true
+    command: ["python", "-m", "app.main"]
 
 volumes:
   chroma_data:
+  hf_cache:

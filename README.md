@@ -43,7 +43,7 @@ Le routeur analyse la requête et décide :
 
 ---
 
-## Démarrage rapide (Docker)
+## Démarrage rapide (Docker — UI web + API)
 
 ```bash
 cp .env.example .env
@@ -51,11 +51,19 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Dans le CLI interactif qui s'ouvre :
+- UI React : http://localhost:5173
+- API FastAPI : http://localhost:8000 (docs auto : http://localhost:8000/docs)
 
-```
-> /ingest data/samples/lecture_ml.md
-> Génère un quiz de 5 questions sur le machine learning supervisé
+Depuis l'UI :
+1. cliquez sur **Importer un document** pour ingérer un PDF/DOCX/TXT/MD
+2. tapez votre question ou demandez un quiz dans la zone de saisie
+
+### CLI Rich d'origine (optionnel)
+
+Le REPL terminal est toujours disponible via un profile Docker :
+
+```bash
+docker compose --profile cli run --rm cli
 ```
 
 ---
@@ -64,14 +72,40 @@ Dans le CLI interactif qui s'ouvre :
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate         # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 cp .env.example .env
 # Editez .env et renseignez OPENROUTER_API_KEY
+
+# Option A — UI web + API
+uvicorn app.api:app --reload --port 8000
+# dans un autre terminal :
+cd web && npm install && npm run dev
+# UI : http://localhost:5173
+
+# Option B — CLI Rich
 python -m app.main
 ```
 
-ChromaDB sera utilisé en mode persistant local (`./.chroma`) si le conteneur n'est pas disponible.
+ChromaDB tombe automatiquement en mode persistant local (`./.chroma`) si le
+conteneur n'est pas disponible — pas besoin de serveur séparé en local.
+
+> **Python 3.11 ou 3.12 recommandé.** `sentence-transformers` et `chromadb`
+> n'ont pas encore de wheels pour 3.14.
+
+---
+
+## API REST
+
+| Méthode | Endpoint | Description |
+|---|---|---|
+| GET  | `/api/health` | Liveness check |
+| GET  | `/api/status` | Nombre de chunks, taille de mémoire, modèle |
+| POST | `/api/query` | `{ "query": "…" }` → `{ thoughts, final_answer, quiz? }` |
+| POST | `/api/ingest` | multipart `file` (PDF/DOCX/TXT/MD) → `{ chunks }` |
+| POST | `/api/reset` | Vide le store et la mémoire |
+
+Docs interactives Swagger UI : http://localhost:8000/docs
 
 ---
 

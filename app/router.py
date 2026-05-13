@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Literal
 
-from app.llm import OpenRouterClient
+from app.llm import GeminiClient
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ _ROUTER_SYSTEM_PROMPT = (
 def route_query(
     query: str,
     has_documents: bool,
-    llm: OpenRouterClient,
+    llm: GeminiClient,
 ) -> Literal["rag", "tools"]:
     lower = query.lower()
 
@@ -71,7 +71,7 @@ def route_query(
 def router_node(
     state: dict,
     *,
-    llm: OpenRouterClient,
+    llm: GeminiClient,
     store: object,
 ) -> dict:
     query: str = state["user_query"]

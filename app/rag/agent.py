@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from app.config import get_settings
-from app.llm import OpenRouterClient
+from app.llm import GeminiClient
 from app.rag.vectorstore import VectorStore
 from app.state import GraphState
 
@@ -19,7 +19,7 @@ _SYSTEM_PROMPT = (
 _QUIZ_TOKENS = {"quiz", "qcm", "questionnaire", "questions"}
 
 
-def rag_node(state: GraphState, *, store: VectorStore, llm: OpenRouterClient) -> GraphState:
+def rag_node(state: GraphState, *, store: VectorStore, llm: GeminiClient) -> GraphState:
     query: str = state["user_query"]
     thoughts: list[dict] = list(state.get("thoughts") or [])
 
@@ -44,16 +44,18 @@ def rag_node(state: GraphState, *, store: VectorStore, llm: OpenRouterClient) ->
     is_quiz = any(token in query_lower for token in _QUIZ_TOKENS)
 
     if is_quiz:
-        from app.tools.quiz_generator import generate_quiz  # lazy import — avoids circular
+        from app.tools.quiz_generator import extract_n_questions, generate_quiz  # lazy import — avoids circular
 
         settings = get_settings()
+        n_questions = extract_n_questions(query, default=settings.quiz_default_questions)
+        thoughts.append({"stage": "RAG", "content": f"Quiz demandé : {n_questions} questions"})
         context_block = "\n\n".join(
             f"[Source: {c['source']}, page: {c['page']}]\n{c['text']}" for c in chunks
         )
         quiz = generate_quiz(
             topic=query,
             context=context_block,
-            n_questions=settings.quiz_default_questions,
+            n_questions=n_questions,
             llm=llm,
             source_refs=chunks,
         )

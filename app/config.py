@@ -13,11 +13,20 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    openrouter_api_key: str = ""
-    openrouter_model: str = "meta-llama/llama-3.3-70b-instruct:free"
-    openrouter_fallback_model: str = "google/gemini-2.0-flash-exp:free"
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Google AI Studio (Gemini)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash-lite"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    # Comma-separated allowlist of selectable models (free Flash tier)
+    gemini_allowed_models: str = (
+        "gemini-2.5-flash-lite,"
+        "gemini-2.5-flash,"
+        "gemini-2.0-flash-lite,"
+        "gemini-2.0-flash,"
+        "gemini-flash-lite-latest"
+    )
 
+    # ChromaDB
     chroma_host: str = "chromadb"
     chroma_port: int = 8000
     chroma_collection: str = "courses"
