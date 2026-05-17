@@ -111,7 +111,7 @@ l'utilisateur, **sans dépendance à un service cloud**.
 | Contrainte | Implémentation |
 |---|---|
 | **Docker obligatoire** | `docker-compose.yml` orchestre tous les services |
-| **LLM local obligatoire** | Service `ollama` + modèle `llama3.2:3b` par défaut |
+| **LLM local obligatoire** | Service `ollama` + modèle `qwen2.5:0.5b` par défaut (allowlist : `gemma2:2b`, `llama3.2:3b`, `qwen2.5:7b`) |
 | **RAG local** | ChromaDB + embeddings `sentence-transformers/all-MiniLM-L6-v2` |
 | **Volume persistant** | Volumes `chroma_data`, `ollama_models`, `hf_cache` |
 | **Réplicabilité** | Pas de dépendance à un chemin absolu ou à un OS spécifique |
@@ -128,8 +128,8 @@ l'utilisateur, **sans dépendance à un service cloud**.
 
 | Catégorie | Exigence |
 |---|---|
-| **Performance** | Génération quiz 5 questions < 60s en CPU pur (modèle 3B) |
-| **Empreinte mémoire** | < 4 Go pour les services hors modèle ; modèle de 2 Go par défaut |
+| **Performance** | Génération quiz 5 questions < 30s en CPU pur avec le modèle par défaut `qwen2.5:0.5b` ; < 60s avec `llama3.2:3b` |
+| **Empreinte mémoire** | < 4 Go pour les services hors modèle ; modèle par défaut ~400 Mo (`qwen2.5:0.5b`), jusqu'à ~4.7 Go pour `qwen2.5:7b` |
 | **Portabilité** | Linux x86_64, macOS Intel/Apple Silicon, Windows WSL2 |
 | **Maintenabilité** | Tests `pytest` couvrant security + tools + rag (≥ 60 % lignes app/) |
 | **Sécurité** | `prompt_guard` activé sur 100 % des entrées utilisateur |
@@ -145,7 +145,7 @@ Vue d'ensemble :
 - **Frontend** : React 18 + Vite + Tailwind, servi par nginx
 - **Backend** : FastAPI + uvicorn, exposant 7 endpoints REST
 - **Orchestrateur** : LangGraph avec 4 nœuds (router, rag, tools, finalizer)
-- **LLM** : Ollama HTTP API, modèle `llama3.2:3b` par défaut
+- **LLM** : Ollama HTTP API, modèle `qwen2.5:0.5b` par défaut (allowlist `gemma2:2b`, `llama3.2:3b`, `qwen2.5:7b`)
 - **Vector DB** : ChromaDB HTTP (fallback PersistentClient local)
 - **Embeddings** : `sentence-transformers/all-MiniLM-L6-v2` exécuté localement
 
@@ -155,7 +155,7 @@ Vue d'ensemble :
 
 | Risque | Probabilité | Impact | Mitigation |
 |---|---|---|---|
-| LLM local trop lent en CPU pur | Élevée | Moyen | Modèle 3B par défaut ; allowlist 2B disponible |
+| LLM local trop lent en CPU pur | Moyenne | Moyen | Modèle ultra-léger `qwen2.5:0.5b` (~400 Mo) par défaut ; allowlist 2B / 3B / 7B au choix |
 | Hallucination hors contexte | Moyenne | Élevé | Prompt système strict + citations obligatoires |
 | Prompt injection via document malveillant | Moyenne | Élevé | `prompt_guard` + system prompts verrouillés |
 | Quiz JSON invalide | Moyenne | Moyen | Schéma pydantic + retry + salvage JSON tronqué |

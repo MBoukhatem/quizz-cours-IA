@@ -15,7 +15,8 @@ questions ancrées dans votre support avec citations de sources.
 - 📋 [Cahier des charges](docs/specifications.md) — contexte, personas, fonctionnalités, contraintes
 - 🏛️ [Architecture](docs/architecture.md) — 5 diagrammes Mermaid (use case, composants, séquence, RAG, déploiement)
 - 🔒 [Sécurité](docs/security.md) — prompt-injection guard, matrice des risques, conformité local
-- 📄 [Rapport final PDF](docs/report.pdf) — synthèse complète 18 pages
+- 📄 [Rapport final PDF](docs/report.pdf) — synthèse complète du projet
+- 🧪 [Plan de tests](docs/tests.md) — couverture pytest (security + rag + tools)
 
 ---
 

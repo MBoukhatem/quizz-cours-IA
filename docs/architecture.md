@@ -73,7 +73,7 @@ flowchart TB
 
     subgraph LLM[Couche LLM locale]
         OLL[Ollama server]
-        MOD[Modele llama3.2:3b]
+        MOD[Modele qwen2.5:0.5b par defaut]
     end
 
     subgraph Securite[Gouvernance]
@@ -170,7 +170,7 @@ flowchart LR
     QEMB[Embedding requete]
     SEARCH[Recherche cosine top-k=4]
     CTX[Contexte enrichi avec citations]
-    LLM[Ollama llama3.2:3b]
+    LLM[Ollama qwen2.5:0.5b]
     OUT[Reponse / Quiz JSON]
 
     Q --> QEMB --> SEARCH
@@ -206,7 +206,7 @@ flowchart TB
             end
 
             subgraph C3[Conteneur: ollama-init]
-                INIT[ollama pull llama3.2:3b]
+                INIT[ollama pull qwen2.5:0.5b]
             end
 
             subgraph C4[Conteneur: api]
@@ -244,13 +244,13 @@ flowchart TB
 |---|---|---|---|
 | web | 5173 | 5173 | UI utilisateur |
 | api | 8000 | 8000 | API REST + Swagger |
-| ollama | 11434 | 11434 | Debug / `ollama pull` manuel |
+| ollama | — | 11434 | Non exposé par défaut (décommenter dans `docker-compose.yml` pour debug) |
 | chromadb | — | 8000 | Non exposé, accès interne uniquement |
 
 **Volumes persistants** :
 
 - `chroma_data` : index vectoriel ChromaDB (re-créé à chaque `/api/reset`)
-- `ollama_models` : modèles téléchargés (~2 Go pour llama3.2:3b)
+- `ollama_models` : modèles téléchargés (~400 Mo pour `qwen2.5:0.5b` par défaut, jusqu'à ~4.7 Go pour `qwen2.5:7b`)
 - `hf_cache` : modèles d'embeddings HuggingFace (~90 Mo)
 
 ---
