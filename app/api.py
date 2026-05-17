@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import tempfile
 from typing import Optional
 
@@ -35,14 +34,6 @@ logging.basicConfig(
 )
 for noisy in ("httpx", "httpcore", "sentence_transformers", "chromadb"):
     logging.getLogger(noisy).setLevel(logging.WARNING)
-
-if not settings.gemini_api_key or settings.gemini_api_key == "REPLACE_ME":
-    print(
-        "Erreur: GEMINI_API_KEY manquante ou non configurée.\n"
-        "Copiez .env.example vers .env et renseignez votre clé Google AI Studio.",
-        file=sys.stderr,
-    )
-    sys.exit(2)
 
 llm = make_client(settings)
 embedder = Embedder(settings.embedding_model)
@@ -219,6 +210,8 @@ async def ingest_file(file: UploadFile = File(...)) -> dict:
     try:
         docs = load_document(tmppath)
         chunks = chunk_documents(docs)
+        store.reset()
+        memory.clear()
         store.add(chunks)
     except Exception as exc:
         logger.exception("Ingest error")

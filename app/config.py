@@ -13,17 +13,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Google AI Studio (Gemini)
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash-lite"
-    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    # Comma-separated allowlist of selectable models (free Flash tier)
-    gemini_allowed_models: str = (
-        "gemini-2.5-flash-lite,"
-        "gemini-2.5-flash,"
-        "gemini-2.0-flash-lite,"
-        "gemini-2.0-flash,"
-        "gemini-flash-lite-latest"
+    # Ollama (local LLM)
+    ollama_model: str = "qwen2.5:0.5b"
+    ollama_base_url: str = "http://ollama:11434"
+    # Comma-separated allowlist of selectable local models.
+    # Ordered from lightest to heaviest — keep qwen2.5:0.5b first so the
+    # default works on memory-constrained machines (< 2 GB free).
+    ollama_allowed_models: str = (
+        "qwen2.5:0.5b,"
+        "gemma2:2b,"
+        "llama3.2:3b,"
+        "qwen2.5:7b"
     )
 
     # ChromaDB

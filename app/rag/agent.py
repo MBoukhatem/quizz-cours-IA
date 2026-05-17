@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from app.config import get_settings
-from app.llm import GeminiClient
+from app.llm import OllamaClient
 from app.rag.vectorstore import VectorStore
 from app.state import GraphState
 
@@ -19,7 +19,7 @@ _SYSTEM_PROMPT = (
 _QUIZ_TOKENS = {"quiz", "qcm", "questionnaire", "questions"}
 
 
-def rag_node(state: GraphState, *, store: VectorStore, llm: GeminiClient) -> GraphState:
+def rag_node(state: GraphState, *, store: VectorStore, llm: OllamaClient) -> GraphState:
     query: str = state["user_query"]
     thoughts: list[dict] = list(state.get("thoughts") or [])
 

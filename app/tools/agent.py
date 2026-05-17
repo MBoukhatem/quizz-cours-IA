@@ -4,7 +4,7 @@ import json
 import logging
 
 from app.config import get_settings
-from app.llm import GeminiClient
+from app.llm import OllamaClient
 from app.state import GraphState
 from app.tools.quiz_generator import QuizGenerationError, extract_n_questions, generate_quiz
 from app.tools.web_search import web_search
@@ -25,7 +25,7 @@ _TOOLS_SYSTEM_PROMPT = (
 )
 
 
-def _needs_web_search(query: str, llm: GeminiClient) -> bool:
+def _needs_web_search(query: str, llm: OllamaClient) -> bool:
     lower = query.lower()
     if any(kw in lower for kw in _WEB_KEYWORDS):
         return True
@@ -49,7 +49,7 @@ def _needs_web_search(query: str, llm: GeminiClient) -> bool:
         return True
 
 
-def tools_node(state: GraphState, *, llm: GeminiClient) -> GraphState:
+def tools_node(state: GraphState, *, llm: OllamaClient) -> GraphState:
     query: str = state["user_query"]
     thoughts: list[dict] = list(state.get("thoughts") or [])
 

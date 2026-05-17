@@ -14,63 +14,36 @@ class LLMError(RuntimeError):
     pass
 
 
-# Default allowlist of free-tier Gemini Flash models.
-# Surfaced to the UI and used as the source of truth for what is selectable.
-DEFAULT_FLASH_MODELS: list[str] = [
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-flash-lite-latest",
+# Default allowlist of local Ollama models, ordered by footprint.
+DEFAULT_OLLAMA_MODELS: list[str] = [
+    "qwen2.5:0.5b",
+    "gemma2:2b",
+    "llama3.2:3b",
+    "qwen2.5:7b",
 ]
 
 
-def _to_gemini_messages(messages: list[dict]) -> tuple[Optional[str], list[dict]]:
-    """Translate OpenAI-style messages to Gemini's (system_instruction, contents).
+class OllamaClient:
+    """Ollama HTTP client.
 
-    - role "system" is merged into Gemini's top-level `system_instruction`.
-    - role "user"/"assistant" become contents with role "user"/"model".
-    """
-    system_parts: list[str] = []
-    contents: list[dict] = []
-    for m in messages:
-        role = m.get("role", "user")
-        content = m.get("content", "")
-        if not isinstance(content, str):
-            content = str(content)
-        if role == "system":
-            system_parts.append(content)
-            continue
-        gemini_role = "model" if role == "assistant" else "user"
-        contents.append({"role": gemini_role, "parts": [{"text": content}]})
-
-    system_instruction = "\n\n".join(system_parts) if system_parts else None
-    return system_instruction, contents
-
-
-class GeminiClient:
-    """Google AI Studio (Generative Language API) client.
-
-    Preserves the same surface as the previous OpenRouter client so that all
-    callers (router, rag agent, tools agent, quiz_generator) stay unchanged.
+    Keeps the same surface as the previous Gemini/OpenRouter clients
+    (chat / current_model / set_model / allowed_models) so the router,
+    rag agent, tools agent and quiz_generator remain untouched.
     """
 
     def __init__(
         self,
-        api_key: str,
         model: str,
-        base_url: str = "https://generativelanguage.googleapis.com/v1beta",
+        base_url: str = "http://ollama:11434",
         allowed_models: Optional[list[str]] = None,
     ) -> None:
-        if not api_key:
-            raise LLMError("GEMINI_API_KEY is missing")
-        self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._default_model = model
         self._current_model = model
-        self._allowed = list(allowed_models) if allowed_models else list(DEFAULT_FLASH_MODELS)
+        self._allowed = list(allowed_models) if allowed_models else list(DEFAULT_OLLAMA_MODELS)
         self._lock = threading.Lock()
-        self._client = httpx.Client(timeout=60.0)
+        # Local model inference can be slow on CPU — keep a generous timeout.
+        self._client = httpx.Client(timeout=300.0)
 
     # -------- model management --------
     @property
@@ -90,7 +63,7 @@ class GeminiClient:
             )
         with self._lock:
             self._current_model = model
-        logger.info("Active Gemini model set to %s", model)
+        logger.info("Active Ollama model set to %s", model)
         return model
 
     # -------- request --------
@@ -102,54 +75,46 @@ class GeminiClient:
         max_tokens: int,
         response_format: Optional[dict],
     ) -> str:
-        system_instruction, contents = _to_gemini_messages(messages)
-
+        # Ollama accepts OpenAI-style {role, content} messages directly.
         body: dict = {
-            "contents": contents,
-            "generationConfig": {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {
                 "temperature": temperature,
-                "maxOutputTokens": max_tokens,
+                "num_predict": max_tokens,
             },
         }
-        if system_instruction:
-            body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
-
-        # Map OpenAI-style {"type": "json_object"} to Gemini JSON mime
+        # Force JSON when caller asks for json_object — equivalent to
+        # Gemini's responseMimeType: application/json.
         if response_format and response_format.get("type") == "json_object":
-            body["generationConfig"]["responseMimeType"] = "application/json"
+            body["format"] = "json"
 
-        url = f"{self._base_url}/models/{model}:generateContent"
-        params = {"key": self._api_key}
+        url = f"{self._base_url}/api/chat"
 
         try:
-            resp = self._client.post(url, params=params, json=body)
+            resp = self._client.post(url, json=body)
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
             raise LLMError(f"network: {exc}") from exc
 
-        if resp.status_code == 429:
-            raise LLMError(f"rate_limited: {model}")
-        if resp.status_code == 401 or resp.status_code == 403:
-            raise LLMError(f"auth error on {model}: check GEMINI_API_KEY")
         if resp.status_code == 404:
-            raise LLMError(f"model not found: {model}")
+            # Ollama returns 404 when the model isn't pulled locally.
+            raise LLMError(
+                f"model '{model}' not found on Ollama. "
+                f"Pull it with: docker compose exec ollama ollama pull {model}"
+            )
         if resp.status_code >= 500:
             raise LLMError(f"upstream {resp.status_code} on {model}")
         if resp.status_code >= 400:
             raise LLMError(f"http {resp.status_code} on {model}: {resp.text[:200]}")
 
         data = resp.json()
-        candidates = data.get("candidates") or []
-        if not candidates:
-            # blocked by safety, or empty — surface useful info
-            reason = data.get("promptFeedback", {}).get("blockReason") or "empty"
-            raise LLMError(f"no candidates from {model} ({reason})")
-
-        parts = candidates[0].get("content", {}).get("parts") or []
-        texts = [p.get("text", "") for p in parts if isinstance(p, dict)]
-        text = "".join(texts).strip()
+        # Ollama /api/chat returns {"message": {"role": "...", "content": "..."}, "done": true, ...}
+        message = data.get("message") or {}
+        text = (message.get("content") or "").strip()
         if not text:
-            finish = candidates[0].get("finishReason", "?")
-            raise LLMError(f"empty response from {model} (finishReason={finish})")
+            done_reason = data.get("done_reason") or "?"
+            raise LLMError(f"empty response from {model} (done_reason={done_reason})")
         return text
 
     # -------- public surface (unchanged) --------
@@ -163,13 +128,12 @@ class GeminiClient:
     ) -> str:
         """Call the active model, retrying transient failures.
 
-        We respect the user's model choice — no silent fallback to another
-        model. But transient upstream errors (429 rate-limit, 5xx) get a small
-        exponential backoff before giving up, so a single hiccup doesn't
-        surface as a failed quiz.
+        Transient upstream errors (5xx, network) get a small exponential
+        backoff before giving up, so a single hiccup doesn't surface as a
+        failed quiz.
         """
         model = self.current_model
-        delays = [1.0, 3.0]  # two retries: 1s then 3s
+        delays = [1.0, 3.0]
         last_err: Optional[LLMError] = None
         for attempt in range(len(delays) + 1):
             try:
@@ -179,43 +143,34 @@ class GeminiClient:
             except LLMError as exc:
                 last_err = exc
                 msg = str(exc)
-                transient = (
-                    msg.startswith("rate_limited")
-                    or msg.startswith("upstream ")
-                    or msg.startswith("network:")
-                )
+                transient = msg.startswith("upstream ") or msg.startswith("network:")
                 if not transient or attempt >= len(delays):
-                    logger.warning("Gemini call failed on %s: %s", model, msg)
+                    logger.warning("Ollama call failed on %s: %s", model, msg)
                     raise
                 logger.info(
-                    "Transient Gemini error on %s (%s) — retrying in %.1fs",
+                    "Transient Ollama error on %s (%s) — retrying in %.1fs",
                     model, msg, delays[attempt],
                 )
                 time.sleep(delays[attempt])
-        # unreachable, but keep mypy happy
         raise last_err if last_err else LLMError("unknown error")
 
-    def __enter__(self) -> "GeminiClient":
+    def __enter__(self) -> "OllamaClient":
         return self
 
     def __exit__(self, *args: object) -> None:
         self._client.close()
 
 
-def make_client(settings: object) -> GeminiClient:
-    api_key = getattr(settings, "gemini_api_key", "") or ""
-    model = getattr(settings, "gemini_model", DEFAULT_FLASH_MODELS[0])
-    base_url = getattr(
-        settings, "gemini_base_url", "https://generativelanguage.googleapis.com/v1beta"
-    )
-    allowed_raw: str = getattr(settings, "gemini_allowed_models", "") or ""
+def make_client(settings: object) -> OllamaClient:
+    model = getattr(settings, "ollama_model", DEFAULT_OLLAMA_MODELS[0])
+    base_url = getattr(settings, "ollama_base_url", "http://ollama:11434")
+    allowed_raw: str = getattr(settings, "ollama_allowed_models", "") or ""
     allowed = (
         [m.strip() for m in allowed_raw.split(",") if m.strip()]
         if allowed_raw
         else None
     )
-    return GeminiClient(
-        api_key=api_key,
+    return OllamaClient(
         model=model,
         base_url=base_url,
         allowed_models=allowed,

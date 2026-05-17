@@ -6,7 +6,7 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from app.llm import GeminiClient
+from app.llm import OllamaClient
 from app.rag.agent import rag_node
 from app.rag.vectorstore import VectorStore
 from app.router import router_node
@@ -41,7 +41,7 @@ def finalizer(state: GraphState) -> GraphState:
     return state  # type: ignore[return-value]
 
 
-def build_graph(llm: GeminiClient, store: VectorStore) -> Any:
+def build_graph(llm: OllamaClient, store: VectorStore) -> Any:
     graph = StateGraph(GraphState)
 
     bound_router = functools.partial(router_node, llm=llm, store=store)

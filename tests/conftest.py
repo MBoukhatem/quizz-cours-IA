@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 from collections import deque
 from typing import Any
 
@@ -84,12 +83,3 @@ def tmp_chroma(tmp_path: Any, monkeypatch: Any):
     yield store
 
 
-# ---------------------------------------------------------------------------
-# Skip marker for tests that need a real API key
-# ---------------------------------------------------------------------------
-
-requires_real_llm = pytest.mark.skipif(
-    os.getenv("OPENROUTER_API_KEY", "").startswith("sk-or-v1-REPLACE_ME")
-    or not os.getenv("OPENROUTER_API_KEY"),
-    reason="no real OPENROUTER_API_KEY",
-)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 from dotenv import load_dotenv
 
@@ -25,15 +24,6 @@ def main() -> None:
     )
     for noisy in ("httpx", "httpcore", "sentence_transformers", "chromadb"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
-
-    key = settings.gemini_api_key
-    if not key or key == "REPLACE_ME":
-        print(
-            "Erreur: GEMINI_API_KEY manquante ou non configurée.\n"
-            "Copiez .env.example vers .env et renseignez votre clé Google AI Studio.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
 
     llm = make_client(settings)
     embedder = Embedder(settings.embedding_model)

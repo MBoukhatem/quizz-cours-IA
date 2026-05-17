@@ -9,17 +9,72 @@ services:
       timeout: 5s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    # Port non exposé sur l'hôte : l'API y accède via le réseau Docker
+    # interne. Décommenter pour debug local (`curl http://localhost:11434`).
+    # ports:
+    #   - "11434:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_DEFAULT_MODEL: "qwen2.5:0.5b"
+    command:
+      - |
+        set -e
+        MODEL="$${OLLAMA_DEFAULT_MODEL}"
+        if [ -z "$$MODEL" ]; then
+          echo "OLLAMA_DEFAULT_MODEL is empty, skipping pull."
+          exit 0
+        fi
+        if ollama list 2>/dev/null | awk 'NR>1 {print $$1}' | grep -qx "$$MODEL"; then
+          echo "Model $$MODEL already present, skipping pull."
+          exit 0
+        fi
+        echo "Pulling default model: $$MODEL"
+        attempt=1
+        until ollama pull "$$MODEL"; do
+          if [ $$attempt -ge 3 ]; then
+            echo "Failed to pull $$MODEL after $$attempt attempts." >&2
+            exit 1
+          fi
+          echo "Pull failed (attempt $$attempt), retrying in 5s..." >&2
+          attempt=$$((attempt+1))
+          sleep 5
+        done
+        echo "Model $$MODEL ready."
+    restart: "no"
+
   api:
     build: .
     depends_on:
       chromadb:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     env_file:
       - path: .env
         required: false
     environment:
       CHROMA_HOST: chromadb
       CHROMA_PORT: 8000
+      OLLAMA_BASE_URL: http://ollama:11434
     volumes:
       - ./data:/app/data
       - ./.chroma:/app/.chroma
@@ -43,12 +98,15 @@ services:
     depends_on:
       chromadb:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
     env_file:
       - path: .env
         required: false
     environment:
       CHROMA_HOST: chromadb
       CHROMA_PORT: 8000
+      OLLAMA_BASE_URL: http://ollama:11434
     volumes:
       - ./data:/app/data
       - ./.chroma:/app/.chroma
@@ -60,3 +118,4 @@ services:
 volumes:
   chroma_data:
   hf_cache:
+  ollama_models:

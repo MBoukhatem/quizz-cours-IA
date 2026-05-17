@@ -7,7 +7,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ValidationError
 
-from app.llm import GeminiClient
+from app.llm import OllamaClient
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +151,7 @@ def generate_quiz(
     topic: str,
     context: str,
     n_questions: int,
-    llm: GeminiClient,
+    llm: OllamaClient,
     source_refs: list[dict] | None = None,
 ) -> Quiz:
     truncated_context = context[:6000]
